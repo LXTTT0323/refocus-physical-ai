@@ -57,7 +57,9 @@ async function readBytes(request, maxBytes) {
 
 function safeMessage(error) {
   const message = error instanceof Error ? error.message : "Unknown error";
-  return message.replace(/Bearer\s+\S+/gi, "Bearer [redacted]");
+  const causeCode = error?.cause?.code;
+  const detail = causeCode ? `${message} (${causeCode})` : message;
+  return detail.replace(/Bearer\s+\S+/gi, "Bearer [redacted]");
 }
 
 async function serveFile(response, root, relative) {
