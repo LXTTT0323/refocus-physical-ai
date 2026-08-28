@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:vercel": "node scripts/build-vercel.mjs",
     "monitor": "node web-monitor/server.mjs",
     "test": "node --test tests/*.test.mjs && python -m unittest tests/test_product_skill_contracts.py -v"
   },

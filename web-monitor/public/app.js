@@ -64,6 +64,7 @@ const state = {
   running: false,
   faceLandmarker: null,
   localSessionId: null,
+  coordinatorSessionId: null,
   taskContract: null,
   cameraStream: null,
   screenStream: null,
@@ -141,14 +142,38 @@ function escapeHtml(value) {
 }
 
 async function api(path, body) {
-  const response = await fetch(path, body === undefined ? undefined : {
+  let demoToken = sessionStorage.getItem("refocus_demo_token") ?? "";
+  const headers = body === undefined ? {} : { "Content-Type": "application/json" };
+  if (demoToken) headers["x-refocus-demo-token"] = demoToken;
+  let response = await fetch(path, body === undefined ? { headers } : {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
+  if (response.status === 401 && !demoToken) {
+    demoToken = window.prompt("请输入 RE:FOCUS 演示访问码")?.trim() ?? "";
+    if (demoToken) {
+      sessionStorage.setItem("refocus_demo_token", demoToken);
+      headers["x-refocus-demo-token"] = demoToken;
+      response = await fetch(path, body === undefined ? { headers } : {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+    }
+  }
   const result = await response.json();
   if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
   return result;
+}
+
+function sessionEnvelope() {
+  return {
+    local_session_id: state.localSessionId,
+    coordinator_session_id: state.coordinatorSessionId,
+    task_contract: state.taskContract,
+    session_started_at: state.sessionStartedAt,
+  };
 }
 
 async function loadVisualProvider() {
@@ -433,8 +458,9 @@ async function startAgentSession() {
     focus_minutes: Number(elements.minutes.value),
   });
   state.localSessionId = result.local_session_id;
+  state.coordinatorSessionId = result.coordinator_session_id;
   state.taskContract = result.task_contract;
-  state.sessionStartedAt ||= Date.now();
+  state.sessionStartedAt = result.session_started_at ?? Date.now();
   setConnection("agent", "已连接 flow-coordinator", "ok");
   renderTaskContract();
   addEvent("AGENT_SESSION_READY", {
@@ -602,7 +628,7 @@ async function clarifyTask() {
   elements.clarify.disabled = true;
   try {
     const result = await api("/api/session/clarify", {
-      local_session_id: state.localSessionId,
+      ...sessionEnvelope(),
       answer: elements.clarificationAnswer.value,
     });
     state.taskContract = result.task_contract;
@@ -620,7 +646,7 @@ async function classifyContext() {
   elements.classification.textContent = "flow-coordinator 判断中…";
   try {
     const response = await api("/api/context/relevance", {
-      local_session_id: state.localSessionId,
+      ...sessionEnvelope(),
       observation: {
         active_app: elements.activeApp.value || null,
         window_title: elements.windowTitle.value || null,
@@ -670,7 +696,7 @@ async function runVisualClassification() {
   elements.visualResult.textContent = "正在截取单张画面并由 flow-coordinator 判断…";
   try {
     const response = await api("/api/context/visual", {
-      local_session_id: state.localSessionId,
+      ...sessionEnvelope(),
       source,
       image_data_url: captureVisualSnapshot(source),
       screen_change_score: state.screenChangeScore,
@@ -838,7 +864,12 @@ async function transcribeRecordedAnswer() {
     const blob = new Blob(state.voiceChunks, { type: state.voiceRecorder.mimeType || "audio/webm" });
     const response = await fetch("/api/audio/transcribe", {
       method: "POST",
-      headers: { "Content-Type": blob.type.split(";")[0] || "audio/webm" },
+      headers: {
+        "Content-Type": blob.type.split(";")[0] || "audio/webm",
+        ...(sessionStorage.getItem("refocus_demo_token")
+          ? { "x-refocus-demo-token": sessionStorage.getItem("refocus_demo_token") }
+          : {}),
+      },
       body: blob,
     });
     const result = await response.json();
@@ -895,7 +926,7 @@ async function generateSessionSummary() {
   elements.generateSummary.textContent = "flow-coordinator 总结中…";
   try {
     const response = await api("/api/session/end", {
-      local_session_id: state.localSessionId,
+      ...sessionEnvelope(),
       user_feedback: {
         completion_report: completionReport,
         focus_experience: focusExperience,

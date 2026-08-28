@@ -331,6 +331,7 @@ export class AgentStackFlowCoordinator {
     apiKey,
     projectId,
     agentId,
+    sessionId = null,
     fetchImpl = fetch,
     timeoutMs = 90_000,
   }) {
@@ -341,16 +342,18 @@ export class AgentStackFlowCoordinator {
     this.#apiKey = apiKey;
     this.#projectId = projectId;
     this.#agentId = agentId;
+    this.#sessionId = sessionId;
     this.#fetch = fetchImpl;
     this.#timeoutMs = timeoutMs;
   }
 
-  static fromEnvironment() {
+  static fromEnvironment({ sessionId = null } = {}) {
     return new AgentStackFlowCoordinator({
       baseUrl: process.env.AGENT_STACK_BASE_URL,
       apiKey: process.env.AGENT_STACK_USER_API_KEY,
       projectId: process.env.AGENT_STACK_PROJECT_ID,
       agentId: process.env.AGENT_STACK_AGENT_ID,
+      sessionId,
     });
   }
 

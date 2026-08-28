@@ -146,6 +146,69 @@ test("monitor rejects missing goals and unknown local sessions", async () => {
   });
 });
 
+test("deployed monitor can restore a session after a serverless restart", async () => {
+  let started;
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/session/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "完成 RE:FOCUS 路演 PPT", focus_minutes: 30 }),
+    });
+    started = await response.json();
+  });
+
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/context/relevance`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        local_session_id: started.local_session_id,
+        coordinator_session_id: started.coordinator_session_id,
+        task_contract: started.task_contract,
+        session_started_at: started.session_started_at,
+        observation: {
+          active_app: "PowerPoint",
+          window_title: "RE:FOCUS 路演 PPT",
+          screen_shared: true,
+          screen_change_score: 0.08,
+        },
+      }),
+    });
+    assert.equal(response.status, 201);
+    const context = await response.json();
+    assert.equal(context.result.classification, "relevant");
+  });
+});
+
+test("deployed monitor protects Agent Stack calls with a demo token", async () => {
+  const server = createMonitorServer({
+    coordinatorFactory: () => new MockFlowCoordinator(),
+    demoToken: "test-demo-token",
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  try {
+    const denied = await fetch(`http://127.0.0.1:${port}/api/session/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "test" }),
+    });
+    assert.equal(denied.status, 401);
+
+    const allowed = await fetch(`http://127.0.0.1:${port}/api/session/start`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-refocus-demo-token": "test-demo-token",
+      },
+      body: JSON.stringify({ goal: "完成 RE:FOCUS 路演 PPT" }),
+    });
+    assert.equal(allowed.status, 201);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("visual route falls back to local OCR when the Agent model has no vision", async () => {
   const coordinator = new MockFlowCoordinator();
   coordinator.classifyVisualContext = async () => {

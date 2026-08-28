@@ -2,6 +2,8 @@
 .env.*
 !.env.example
 build/
+public/
+.vercel/
 .pio/
 node_modules/
 dist/

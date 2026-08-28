@@ -51,7 +51,7 @@ TiDB Agent Stack / flow-coordinator
 - 协议：`protocol/` 与 `docs/event-protocol-v0.md`
 - 已验收：Hello World、NDJSON、四节点真实 Agent 闭环。
 - 已完成：明确任务合同，以及“模糊任务 → 追问一次 → 补充后 ready”的真实 Trace。
-- 已完成：`task-setup`、`context-relevance`、`session-summary` 三个本地 Skill 包和固定 JSON Schema；尚未线上安装。
+- 已完成：`task-setup`、`context-relevance`、`session-summary` 三个 Skill 已安装到 `flow-coordinator`，并通过真实 `assistant_message + turn_finished.status=succeeded` Trace 验证。
 - 下一目标：实现 Desktop Observer 的人在场与前台窗口采样，驱动 `FOCUS_READY` 门禁。
 
 ### C. 产品与演示

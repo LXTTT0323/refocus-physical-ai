@@ -78,15 +78,18 @@ async function serveFile(response, root, relative) {
   }
 }
 
-export function createMonitorServer({
+export function createMonitorHandler({
   coordinatorFactory,
   ocrExtractor = extractLocalText,
   visionMode = process.env.AGENT_STACK_VISION_MODE,
   visualProvider = process.env.REFOCUS_VISUAL_PROVIDER ?? (process.env.OPENAI_API_KEY ? "openai" : "ocr"),
   visualObserver,
   audioTranscriber,
+  demoToken = process.env.REFOCUS_DEMO_TOKEN,
 } = {}) {
-  const makeCoordinator = coordinatorFactory ?? (() => AgentStackFlowCoordinator.fromEnvironment());
+  const makeCoordinator = coordinatorFactory ?? (
+    (sessionId = null) => AgentStackFlowCoordinator.fromEnvironment({ sessionId })
+  );
   const externalVisualObserver = visualObserver ?? (
     visualProvider === "openai" ? OpenAIVisualObserver.fromEnvironment() : null
   );
@@ -100,13 +103,44 @@ export function createMonitorServer({
     return item;
   };
 
-  return createServer(async (request, response) => {
+  const restoreSession = (body) => {
+    const localSessionId = body?.local_session_id;
+    const existing = sessions.get(localSessionId);
+    if (existing) return existing;
+    if (
+      typeof localSessionId !== "string" ||
+      typeof body?.coordinator_session_id !== "string" ||
+      !body?.task_contract ||
+      typeof body.task_contract !== "object"
+    ) {
+      return null;
+    }
+    return {
+      coordinator: makeCoordinator(body.coordinator_session_id),
+      taskContract: body.task_contract,
+      createdAt: Number.isFinite(Number(body.session_started_at))
+        ? Number(body.session_started_at)
+        : Date.now(),
+      visionModelUnsupported: visionMode !== "vision",
+    };
+  };
+
+  return async (request, response) => {
     response.setHeader("Permissions-Policy", "camera=(self), display-capture=(self), microphone=(self)");
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Referrer-Policy", "no-referrer");
 
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     try {
+      const configuredAccessToken = demoToken;
+      if (
+        configuredAccessToken &&
+        url.pathname.startsWith("/api/") &&
+        url.pathname !== "/api/health" &&
+        request.headers["x-refocus-demo-token"] !== configuredAccessToken
+      ) {
+        return json(response, 401, { error: "demo access token is required" });
+      }
       if (request.method === "GET" && url.pathname === "/api/health") {
         const required = [
           "AGENT_STACK_BASE_URL",
@@ -220,6 +254,7 @@ export function createMonitorServer({
         return json(response, 201, {
           local_session_id: localSessionId,
           coordinator_session_id: started.coordinator_session_id,
+          session_started_at: Date.now(),
           task_contract: started.task_contract,
           trace: coordinator.trace,
         });
@@ -227,7 +262,7 @@ export function createMonitorServer({
 
       if (request.method === "POST" && url.pathname === "/api/session/end") {
         const body = await readJson(request);
-        const active = sessions.get(body.local_session_id);
+        const active = restoreSession(body);
         if (!active) return json(response, 404, { error: "monitor session not found" });
         const completionReport = typeof body.user_feedback?.completion_report === "string"
           ? body.user_feedback.completion_report.trim()
@@ -273,7 +308,7 @@ export function createMonitorServer({
 
       if (request.method === "POST" && url.pathname === "/api/session/clarify") {
         const body = await readJson(request);
-        const active = sessions.get(body.local_session_id);
+        const active = restoreSession(body);
         if (!active) return json(response, 404, { error: "monitor session not found" });
         if (typeof body.answer !== "string" || !body.answer.trim()) {
           return json(response, 400, { error: "answer is required" });
@@ -291,7 +326,7 @@ export function createMonitorServer({
 
       if (request.method === "POST" && url.pathname === "/api/context/relevance") {
         const body = await readJson(request);
-        const active = sessions.get(body.local_session_id);
+        const active = restoreSession(body);
         if (!active) return json(response, 404, { error: "monitor session not found" });
         if (active.taskContract.status !== "ready") {
           return json(response, 409, { error: "task must be ready before context classification" });
@@ -315,7 +350,7 @@ export function createMonitorServer({
 
       if (request.method === "POST" && url.pathname === "/api/context/visual") {
         const body = await readJson(request, 1024 * 1024);
-        const active = sessions.get(body.local_session_id);
+        const active = restoreSession(body);
         if (!active) return json(response, 404, { error: "monitor session not found" });
         if (active.taskContract.status !== "ready") {
           return json(response, 409, { error: "task must be ready before visual classification" });
@@ -436,7 +471,11 @@ export function createMonitorServer({
     } catch (error) {
       json(response, 500, { error: safeMessage(error) });
     }
-  });
+  };
+}
+
+export function createMonitorServer(options = {}) {
+  return createServer(createMonitorHandler(options));
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
