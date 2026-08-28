@@ -1,0 +1,4 @@
+interface:
+  display_name: "Session Summary"
+  short_description: "Summarize one completed RE:FOCUS work session"
+  default_prompt: "Use $session-summary to summarize this completed RE:FOCUS session."

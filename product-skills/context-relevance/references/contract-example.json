@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "skill": "context-relevance",
+  "classification": "relevant",
+  "confidence": 0.96,
+  "evidence": [
+    "PowerPoint matches a task-provided app hint",
+    "The window title contains RE:FOCUS"
+  ],
+  "matched_hints": {
+    "keywords": ["RE:FOCUS"],
+    "apps": ["PowerPoint"],
+    "domains": []
+  }
+}

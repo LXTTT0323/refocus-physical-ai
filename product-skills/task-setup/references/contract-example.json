@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "skill": "task-setup",
+  "status": "ready",
+  "goal": "完成 RE:FOCUS 路演 PPT 的前三页",
+  "deliverable": "包含完整标题和核心内容的前三页路演 PPT",
+  "success_criteria": ["前三页均有标题", "前三页均有核心内容"],
+  "focus_minutes": 45,
+  "relevance_hints": {
+    "keywords": ["RE:FOCUS", "路演"],
+    "apps": ["PowerPoint"],
+    "domains": []
+  },
+  "clarification_question": null,
+  "confidence": 0.95
+}

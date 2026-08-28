@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "skill": "session-summary",
+  "goal": "完成 RE:FOCUS 路演 PPT 的前三页",
+  "outcome": "partial",
+  "summary": "已完成前三页的结构与初稿，但尚未验证视觉一致性。",
+  "completed_items": ["完成前三页结构", "形成前三页初稿"],
+  "next_action": "检查前三页的视觉一致性并完成最终保存",
+  "focus_minutes_actual": 38,
+  "interruptions": {
+    "count": 1,
+    "total_seconds": 35,
+    "main_reason": "absent"
+  }
+}

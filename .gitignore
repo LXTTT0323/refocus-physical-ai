@@ -6,6 +6,8 @@ build/
 node_modules/
 dist/
 coverage/
+__pycache__/
+*.py[cod]
 *.log
 *.wav
 *.mp3

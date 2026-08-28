@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://refocus.local/schemas/context-relevance-v1.json",
+  "title": "RE:FOCUS context relevance contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "skill",
+    "classification",
+    "confidence",
+    "evidence",
+    "matched_hints"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "skill": { "const": "context-relevance" },
+    "classification": {
+      "enum": ["relevant", "neutral", "unrelated", "unknown"]
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "evidence": {
+      "type": "array",
+      "maxItems": 3,
+      "items": { "type": "string", "minLength": 1, "maxLength": 160 }
+    },
+    "matched_hints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keywords", "apps", "domains"],
+      "properties": {
+        "keywords": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+        },
+        "apps": {
+          "type": "array",
+          "maxItems": 6,
+          "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+        },
+        "domains": {
+          "type": "array",
+          "maxItems": 6,
+          "items": { "type": "string", "minLength": 1, "maxLength": 120 }
+        }
+      }
+    }
+  }
+}

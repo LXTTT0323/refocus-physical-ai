@@ -1,0 +1,4 @@
+interface:
+  display_name: "Context Relevance"
+  short_description: "Classify a window against the active focus task"
+  default_prompt: "Use $context-relevance to classify this window against my active task."
