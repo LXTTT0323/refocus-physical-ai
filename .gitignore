@@ -2,7 +2,7 @@
 .env.*
 !.env.example
 build/
-public/
+/public/
 .vercel/
 .pio/
 node_modules/
@@ -17,6 +17,7 @@ __pycache__/
 *.mov
 secrets/
 credentials/
+/eim_config.toml
 
 # Local teammate bundles duplicate the tracked Agent_link submodule.
 handoff/*.zip

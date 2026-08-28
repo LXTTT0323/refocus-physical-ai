@@ -97,10 +97,18 @@ export function createMonitorHandler({
   const externalAudioTranscriber = audioTranscriber ?? OpenAIAudioTranscriber.fromEnvironment();
   const hardwareEvents = [];
   let nextHardwareEventId = 1;
+  const hardwareCommands = [];
+  let nextHardwareCommandId = 1;
   const enqueueHardwareEvent = (type, payload = {}) => {
     const item = { id: nextHardwareEventId++, type, payload, timestamp: new Date().toISOString() };
     hardwareEvents.push(item);
     if (hardwareEvents.length > 100) hardwareEvents.shift();
+    return item;
+  };
+  const enqueueHardwareCommand = (type, payload = {}) => {
+    const item = { id: nextHardwareCommandId++, type, payload, timestamp: new Date().toISOString() };
+    hardwareCommands.push(item);
+    if (hardwareCommands.length > 100) hardwareCommands.shift();
     return item;
   };
 
@@ -160,6 +168,26 @@ export function createMonitorHandler({
         });
       }
 
+      if (request.method === "GET" && url.pathname === "/api/hardware/commands") {
+        const after = Math.max(0, Number(url.searchParams.get("after") ?? 0));
+        return json(response, 200, {
+          commands: hardwareCommands.filter((item) => item.id > after),
+          latest_id: hardwareCommands.at(-1)?.id ?? after,
+        });
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/hardware/led") {
+        const body = await readJson(request);
+        if (typeof body.on !== "boolean") {
+          return json(response, 400, { error: "on must be boolean" });
+        }
+        const command = enqueueHardwareCommand("LED_SET", {
+          on: body.on,
+          state: typeof body.state === "string" ? body.state : null,
+        });
+        return json(response, 202, { accepted: true, command });
+      }
+
       if (request.method === "POST" && url.pathname === "/api/hardware/session-state") {
         const body = await readJson(request);
         if (typeof body.active !== "boolean") {
@@ -168,7 +196,7 @@ export function createMonitorHandler({
         const event = enqueueHardwareEvent(
           body.active ? "SESSION_START_REQUESTED" : "SESSION_END_REQUESTED",
           {
-            trigger: body.active ? "joystick_forward" : "joystick_returned_to_origin",
+            trigger: "physical_button",
             sequence: Number.isInteger(body.sequence) ? body.sequence : null,
           },
         );
@@ -296,6 +324,31 @@ export function createMonitorHandler({
           summary,
           trace: active.coordinator.trace,
         });
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/session/stop") {
+        const body = await readJson(request);
+        const active = restoreSession(body);
+        if (!active) return json(response, 404, { error: "monitor session not found" });
+        const durationSeconds = Number(body.duration_seconds ?? 0);
+        const interruptionCount = Number(body.interruptions?.count ?? 0);
+        const interruptionSeconds = Number(body.interruptions?.total_seconds ?? 0);
+        const record = {
+          local_session_id: body.local_session_id,
+          goal: active.taskContract.goal,
+          task_status: active.taskContract.status,
+          duration_seconds: Number.isFinite(durationSeconds) && durationSeconds >= 0 ? Math.round(durationSeconds) : 0,
+          interruptions: {
+            count: Number.isInteger(interruptionCount) && interruptionCount >= 0 ? interruptionCount : 0,
+            total_seconds: Number.isFinite(interruptionSeconds) && interruptionSeconds >= 0
+              ? Number(interruptionSeconds.toFixed(1))
+              : 0,
+          },
+          ended_at: new Date().toISOString(),
+          end_reason: typeof body.end_reason === "string" ? body.end_reason : "physical_button",
+        };
+        sessions.delete(body.local_session_id);
+        return json(response, 201, { record });
       }
 
       if (request.method === "POST" && url.pathname === "/api/session/clarify") {

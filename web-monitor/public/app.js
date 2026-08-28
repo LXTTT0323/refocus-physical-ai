@@ -1,14 +1,22 @@
 import { FaceLandmarker, FilesetResolver } from "/vendor/vision_bundle.mjs";
 import { FOCUS_THRESHOLDS, FocusSignalPolicy } from "/focus-policy.js";
 import { HeadDirectionFilter } from "/head-direction-filter.js";
+import {
+  encodeRefocusSerialCommand,
+  parseRefocusSerialLine,
+  serialCommandForLight,
+} from "/refocus-serial.js";
 
 const $ = (selector) => document.querySelector(selector);
 const demoMode = new URLSearchParams(location.search).get("demo") === "1";
+const hardwareMode = new URLSearchParams(location.search).get("hardware") === "1";
+const webSerialMode = new URLSearchParams(location.search).get("webserial") === "1";
 
 const elements = {
   goal: $("#goal"),
   minutes: $("#minutes"),
   start: $("#startButton"),
+  hardwareConnect: $("#hardwareConnectButton"),
   end: $("#endButton"),
   taskTest: $("#taskTestButton"),
   cameraTest: $("#cameraTestButton"),
@@ -116,6 +124,15 @@ const state = {
   voiceStream: null,
   hardwareEventId: 0,
   hardwarePollTimer: null,
+  serialPort: null,
+  serialReader: null,
+  serialBuffer: "",
+  hardwareConnected: false,
+  hardwareDevice: null,
+  hardwarePrepared: false,
+  hardwareSessionActive: false,
+  hardwareSequence: 0,
+  hardwareLastLight: null,
 };
 
 function setConnection(name, text, kind = "") {
@@ -139,6 +156,168 @@ function addEvent(type, payload) {
 
 function escapeHtml(value) {
   return value.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]);
+}
+
+function hardwareSupported() {
+  return "serial" in navigator;
+}
+
+function describeSerialPort(port) {
+  const info = port?.getInfo?.() ?? {};
+  const vendor = info.usbVendorId?.toString(16).toUpperCase().padStart(4, "0");
+  const product = info.usbProductId?.toString(16).toUpperCase().padStart(4, "0");
+  return vendor && product ? `USB ${vendor}:${product}` : "USB 串口";
+}
+
+async function sendHardwareCommand(command) {
+  if (!state.hardwareConnected || !state.serialPort?.writable) return false;
+  const writer = state.serialPort.writable.getWriter();
+  try {
+    await writer.write(new TextEncoder().encode(encodeRefocusSerialCommand(command)));
+    return true;
+  } finally {
+    writer.releaseLock();
+  }
+}
+
+async function syncHardwareLight(light) {
+  if (!state.hardwareConnected || state.hardwareLastLight === light) return;
+  try {
+    await sendHardwareCommand(serialCommandForLight(light));
+    state.hardwareLastLight = light;
+  } catch (error) {
+    addEvent("HARDWARE_LED_ERROR", { message: error.message });
+  }
+}
+
+function handleHardwareFrame(frame) {
+  if (frame.type === "boot") {
+    state.hardwareDevice = frame.device ?? "REFOCUS_C_V2";
+    setConnection("hardware", `固件在线 · ${state.hardwareDevice}`, "ok");
+    addEvent("HARDWARE_BOOT", { device: state.hardwareDevice });
+    void sendHardwareCommand({ type: "get_state" });
+    return;
+  }
+  if (frame.type === "session_active" && typeof frame.value === "boolean") {
+    if (Number.isInteger(frame.seq) && frame.seq > 0 && frame.seq <= state.hardwareSequence) return;
+    if (Number.isInteger(frame.seq)) state.hardwareSequence = frame.seq;
+    const previous = state.hardwareSessionActive;
+    state.hardwareSessionActive = frame.value;
+    setConnection("hardware", frame.value ? "已连接 · 摇杆前位" : "已连接 · 摇杆原位", frame.value ? "warn" : "ok");
+    addEvent("HARDWARE_SESSION_STATE", { active: frame.value, seq: frame.seq ?? null });
+    if (frame.value && !state.running) {
+      addEvent("HARDWARE_START_REQUESTED", { action: "请点击开始完整监测以完成摄像头和整屏授权" });
+    }
+    if (previous === true && frame.value === false && state.running && state.localSessionId) {
+      openFeedback("joystick_returned_to_origin");
+    }
+    return;
+  }
+  if (frame.type === "ack") addEvent("HARDWARE_ACK", { command: frame.command, ok: frame.ok === true });
+}
+
+async function readHardwareSerial(port) {
+  const decoder = new TextDecoder();
+  try {
+    while (port.readable && state.serialPort === port) {
+      const reader = port.readable.getReader();
+      state.serialReader = reader;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          state.serialBuffer += decoder.decode(value, { stream: true });
+          const lines = state.serialBuffer.split(/\r?\n/);
+          state.serialBuffer = lines.pop() ?? "";
+          for (const line of lines) {
+            try {
+              const frame = parseRefocusSerialLine(line);
+              if (frame) handleHardwareFrame(frame);
+            } catch (error) {
+              addEvent("HARDWARE_FRAME_ERROR", { message: error.message });
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+        state.serialReader = null;
+      }
+    }
+  } catch (error) {
+    if (state.serialPort === port) addEvent("HARDWARE_READ_ERROR", { message: error.message });
+  } finally {
+    if (state.serialPort === port) {
+      state.hardwareConnected = false;
+      state.serialPort = null;
+      state.hardwareLastLight = null;
+      setConnection("hardware", "连接已断开", "bad");
+      elements.hardwareConnect.textContent = "重新连接 C 板";
+    }
+  }
+}
+
+async function openHardwarePort(port) {
+  if (!port) return false;
+  if (!port.readable && !port.writable) await port.open({ baudRate: 115200, bufferSize: 4096 });
+  state.serialPort = port;
+  state.hardwareConnected = true;
+  state.hardwareDevice = describeSerialPort(port);
+  state.hardwareSequence = 0;
+  state.hardwareLastLight = null;
+  setConnection("hardware", `已连接 · ${state.hardwareDevice}`, "ok");
+  elements.hardwareConnect.textContent = "检测硬件状态";
+  addEvent("HARDWARE_CONNECTED", { port: state.hardwareDevice, baud: 115200 });
+  void readHardwareSerial(port);
+  await sendHardwareCommand({ type: "get_state" });
+  await syncHardwareLight(state.running ? state.lastLight : "off");
+  return true;
+}
+
+async function connectHardware({ request = true } = {}) {
+  if (!hardwareSupported()) {
+    setConnection("hardware", "请用桌面版 Chrome/Edge", "bad");
+    return false;
+  }
+  if (state.hardwareConnected) {
+    await sendHardwareCommand({ type: "get_state" });
+    return true;
+  }
+  elements.hardwareConnect.disabled = true;
+  setConnection("hardware", "正在连接", "warn");
+  try {
+    const knownPorts = await navigator.serial.getPorts();
+    const port = knownPorts[0] ?? (request ? await navigator.serial.requestPort() : null);
+    if (!port) {
+      setConnection("hardware", "未授权 · 点击连接", "warn");
+      return false;
+    }
+    return await openHardwarePort(port);
+  } catch (error) {
+    const cancelled = error?.name === "NotFoundError";
+    setConnection("hardware", cancelled ? "未选择串口" : "连接失败", cancelled ? "warn" : "bad");
+    addEvent("HARDWARE_CONNECT_ERROR", { message: error.message });
+    return false;
+  } finally {
+    elements.hardwareConnect.disabled = false;
+  }
+}
+
+async function initializeHardwareDetection() {
+  if (!hardwareSupported()) {
+    setConnection("hardware", "浏览器不支持 Web Serial", "bad");
+    elements.hardwareConnect.disabled = true;
+    return;
+  }
+  setConnection("hardware", "正在检测已授权设备", "warn");
+  const connected = await connectHardware({ request: false });
+  if (!connected) setConnection("hardware", "未连接 · 点击授权", "warn");
+  navigator.serial.addEventListener("connect", () => void connectHardware({ request: false }));
+  navigator.serial.addEventListener("disconnect", (event) => {
+    if (event.port === state.serialPort) {
+      state.hardwareConnected = false;
+      setConnection("hardware", "USB 已拔出", "bad");
+    }
+  });
 }
 
 async function api(path, body) {
@@ -368,7 +547,7 @@ function analyzeScreen() {
 
 function updateReadyGate() {
   const decision = state.focusPolicy.evaluate({
-    taskReady: state.taskContract?.status === "ready",
+    taskReady: state.taskContract?.status === "ready" && (!hardwareMode || state.hardwareSessionActive),
     screenShared: state.screenShared,
     present: state.present,
     confirmedPresent: state.confirmedPresent,
@@ -383,11 +562,11 @@ function updateReadyGate() {
   elements.focusDecision.classList.toggle("ready", decision.light === "green");
   elements.focusDecision.classList.toggle("interrupted", decision.light === "red");
   if (decision.light === "green") {
-    elements.focusDecision.textContent = `FOCUSING · 绿灯｜${decision.reason}`;
+    elements.focusDecision.textContent = `FOCUSING · 专注中（网页状态）｜${decision.reason}`;
   } else if (decision.light === "red") {
-    elements.focusDecision.textContent = `INTERRUPTED · 红灯慢闪｜${decision.reason}`;
+    elements.focusDecision.textContent = `INTERRUPTED · 需要回神（网页状态）｜${decision.reason}`;
   } else {
-    elements.focusDecision.textContent = `SETUP · 黄灯｜${decision.reason}`;
+    elements.focusDecision.textContent = `SETUP · 准备中（网页状态）｜${decision.reason}`;
   }
   if (decision.light !== state.lastLight) {
     if (decision.light === "red" && state.lastLight === "green") {
@@ -407,6 +586,7 @@ function updateReadyGate() {
       addEvent("INTERRUPTION_ENDED", { total_seconds: Number((state.interruptionTotalMs / 1000).toFixed(1)) });
     }
     state.lastLight = decision.light;
+    void syncHardwareLight(decision.light);
   }
 }
 
@@ -456,6 +636,73 @@ async function startAgentSession() {
     coordinator_session_id: result.coordinator_session_id,
     turn_id: result.trace.at(-1)?.turnId,
   });
+}
+
+async function setHardwareLed(on, stateName) {
+  if (!hardwareMode) return;
+  try {
+    const result = await api("/api/hardware/led", { on, state: stateName });
+    addEvent("HARDWARE_LED_QUEUED", { on, state: stateName, command_id: result.command?.id });
+  } catch (error) {
+    addEvent("HARDWARE_LED_QUEUE_FAILED", { on, state: stateName, message: error.message });
+  }
+}
+
+async function activateHardwareSession(trigger = "physical_button") {
+  if (!state.hardwarePrepared || !state.localSessionId || state.hardwareSessionActive) return;
+  state.hardwareSessionActive = true;
+  state.sessionStartedAt = Date.now();
+  elements.start.disabled = true;
+  elements.start.textContent = "Session 进行中";
+  elements.end.classList.remove("hidden");
+  setConnection("hardware", "实体按钮已开始 · 灯亮", "ok");
+  await setHardwareLed(true, "session_active");
+  addEvent("SESSION_STARTED", { trigger });
+  updateReadyGate();
+}
+
+async function finishHardwareSession(trigger = "physical_button") {
+  if (!state.hardwareSessionActive || !state.localSessionId) return;
+  state.hardwareSessionActive = false;
+  const durationSeconds = Math.max(0, Math.round((Date.now() - state.sessionStartedAt) / 1000));
+  try {
+    const response = await api("/api/session/stop", {
+      ...sessionEnvelope(),
+      duration_seconds: durationSeconds,
+      interruptions: interruptionSummary(),
+      end_reason: trigger,
+    });
+    const history = JSON.parse(localStorage.getItem("refocus_session_history") || "[]");
+    history.unshift(response.record);
+    localStorage.setItem("refocus_session_history", JSON.stringify(history.slice(0, 20)));
+    await setHardwareLed(false, "session_ended");
+    stopMonitoring();
+    elements.end.classList.add("hidden");
+    elements.feedbackCard.classList.add("hidden");
+    elements.summaryCard.classList.remove("hidden");
+    elements.summaryOutcome.textContent = "已记录";
+    elements.summaryOutcome.className = "state-badge good";
+    elements.summaryText.textContent = "实体按钮结束，本次专注记录已保存。";
+    elements.summaryMinutes.textContent = `${Math.max(1, Math.round(durationSeconds / 60))} 分钟`;
+    elements.summaryInterruptions.textContent = `${response.record.interruptions.count} 次 · ${response.record.interruptions.total_seconds} 秒`;
+    elements.summaryNextAction.textContent = "可重新准备下一次 Session";
+    elements.start.disabled = false;
+    elements.start.textContent = "重新准备检测";
+    state.hardwarePrepared = false;
+    setConnection("hardware", "Session 已结束 · 灯灭", "ok");
+    addEvent("SESSION_RECORDED", { trigger, duration_seconds: durationSeconds });
+    elements.summaryCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (error) {
+    addEvent("SESSION_STOP_ERROR", { trigger, message: error.message });
+  }
+}
+
+async function handleStartClick() {
+  if (hardwareMode && state.hardwarePrepared && !state.hardwareSessionActive) {
+    await activateHardwareSession("web_fallback");
+    return;
+  }
+  await startMonitoring();
 }
 
 function renderTaskContract() {
@@ -525,8 +772,19 @@ async function startMonitoring() {
       updateReadyGate();
       rememberTimer(setInterval(emitSample, 5000));
       rememberTimer(setInterval(updateReadyGate, 500));
-      elements.end.classList.remove("hidden");
-      elements.start.textContent = "监测运行中";
+      if (hardwareMode) {
+        state.hardwarePrepared = true;
+        state.hardwareSessionActive = false;
+        elements.end.classList.add("hidden");
+        elements.start.disabled = false;
+        elements.start.textContent = "备用：网页开始 Session";
+        setConnection("hardware", "检测已准备 · 等待实体按钮", "warn");
+        await setHardwareLed(false, "idle_ready");
+        addEvent("HARDWARE_ARMED", { message: "等待实体按钮开始" });
+      } else {
+        elements.end.classList.remove("hidden");
+        elements.start.textContent = "监测运行中";
+      }
       return;
     }
 
@@ -584,13 +842,26 @@ async function startMonitoring() {
     rememberTimer(setInterval(analyzeScreen, 1000));
     rememberTimer(setInterval(emitSample, 5000));
     rememberTimer(setInterval(updateReadyGate, 500));
-    elements.end.classList.remove("hidden");
-    elements.start.textContent = "监测运行中";
+    if (hardwareMode) {
+      state.hardwarePrepared = true;
+      state.hardwareSessionActive = false;
+      elements.end.classList.add("hidden");
+      elements.start.disabled = false;
+      elements.start.textContent = "备用：网页开始 Session";
+      setConnection("hardware", "检测已准备 · 等待实体按钮", "warn");
+    } else {
+      elements.end.classList.remove("hidden");
+      elements.start.textContent = "监测运行中";
+    }
     addEvent("MONITORING_STARTED", {
       camera: true,
       screen: true,
       display_surface: displaySurface || "monitor_requested",
     });
+    if (hardwareMode) {
+      await setHardwareLed(false, "idle_ready");
+      addEvent("HARDWARE_ARMED", { message: "等待实体按钮开始" });
+    }
   } catch (error) {
     elements.start.disabled = false;
     elements.start.textContent = "重新开始";
@@ -760,6 +1031,7 @@ function openFeedback(trigger = "web_button") {
     return;
   }
   stopMonitoring();
+  void syncHardwareLight("off");
   elements.feedbackCard.classList.remove("hidden");
   elements.voiceStatus.textContent = trigger === "joystick_returned_to_origin"
     ? "检测到摇杆已回原位，专注记录已停止。请依次回答两个问题；板载麦克风接入后会自动填入。"
@@ -773,8 +1045,13 @@ async function pollHardwareEvents() {
     const response = await api(`/api/hardware/events?after=${state.hardwareEventId}`);
     for (const event of response.events) {
       state.hardwareEventId = Math.max(state.hardwareEventId, event.id);
-      if (event.type === "SESSION_END_REQUESTED" && state.localSessionId) {
-        openFeedback(event.payload.trigger);
+      if (event.type === "SESSION_START_REQUESTED") {
+        setConnection("hardware", "桥接在线 · 收到开始", "ok");
+        await activateHardwareSession(event.payload.trigger);
+      }
+      if (event.type === "SESSION_END_REQUESTED" && state.hardwareSessionActive) {
+        setConnection("hardware", "桥接在线 · 收到结束", "ok");
+        await finishHardwareSession(event.payload.trigger);
       }
       if (
         event.type === "REFLECTION_TRANSCRIPT" &&
@@ -961,13 +1238,16 @@ async function generateSessionSummary() {
   }
 }
 
-elements.start.addEventListener("click", startMonitoring);
+elements.start.addEventListener("click", handleStartClick);
+elements.hardwareConnect.addEventListener("click", () => void connectHardware({ request: true }));
 elements.taskTest.addEventListener("click", testTaskUnderstanding);
 elements.cameraTest.addEventListener("click", startCameraTest);
 elements.clarify.addEventListener("click", clarifyTask);
 elements.classify.addEventListener("click", classifyContext);
 elements.visualClassify.addEventListener("click", toggleVisualClassification);
-elements.end.addEventListener("click", () => openFeedback("web_button"));
+elements.end.addEventListener("click", () => hardwareMode
+  ? finishHardwareSession("web_fallback")
+  : openFeedback("web_button"));
 elements.generateSummary.addEventListener("click", generateSessionSummary);
 for (const button of document.querySelectorAll("[data-voice-target]")) {
   button.addEventListener("click", () => startVoiceAnswer(button.dataset.voiceTarget, button));
@@ -975,3 +1255,9 @@ for (const button of document.querySelectorAll("[data-voice-target]")) {
 loadFaceModel();
 loadVisualProvider();
 pollHardwareEvents();
+if (webSerialMode) {
+  void initializeHardwareDetection();
+} else {
+  elements.hardwareConnect.classList.add("hidden");
+  setConnection("hardware", hardwareMode ? "等待 Mac 桥接" : "未启用", hardwareMode ? "warn" : "");
+}

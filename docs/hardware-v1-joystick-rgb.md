@@ -1,5 +1,7 @@
 # 硬件第一版：C 板摇杆 + RGB
 
+> 历史方案，比赛联调不再使用。当前已确认方案见 `handoff/README_先看这里.md`：GPIO0 实体按钮 + GPIO46 单色 LED1 + Mac USB Bridge。板子已经烧录验证，勿按本页重复烧录。
+
 ## 范围
 
 第一版只使用：
@@ -35,6 +37,26 @@
 
 需要 ESP-IDF v5.5.4。选择：
 
+Windows 环境与串口可以先一键检查：
+
+```powershell
+npm run hardware:check
+```
+
+一键编译 C V2 固件（自动使用短构建路径，规避 Windows 路径长度问题）：
+
+```powershell
+npm run hardware:build
+```
+
+检测到串口后可直接编译并烧录，例如：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build-c-v2.ps1 -Port COM5
+```
+
+正式网页使用桌面版 Chrome/Edge 的 Web Serial。首次点击“连接 C 板”选择串口；浏览器记住授权后，后续会自动检测并发送 `get_state`。网页直接识别 `boot`、`session_active`、`ack` 和断线事件，并把专注状态映射到 RGB。由于浏览器安全限制，首次串口授权、摄像头授权和整个屏幕授权都必须由用户点击确认。
+
 ```text
 Agent Link Device
 → Board Type
@@ -61,8 +83,10 @@ idf.py -p COM<实际串口> flash monitor
 
 若向前无反应、向后才触发，把 `config.h` 中 `REFOCUS_FORWARD_IS_HIGH` 从 `1` 改为 `0` 后重新编译。
 
-## 当前限制
+## 当前环境状态
 
-- 本机当前有 PlatformIO，但没有检测到 ESP-IDF 的 `idf.py`，因此代码尚未在本机完成 ESP-IDF 编译和真机烧录。
+- 已安装 ESP-IDF v5.5.4、PlatformIO 6.1.19 和 pyserial，并提供 `hardware:check` 自动检查。
+- 固件使用系统临时目录中的短构建路径，避免仓库路径过长导致 ESP-IDF 编译失败。
+- 当前若显示 `No COM port detected`，说明电脑尚未识别 C 板；请换用确认支持数据传输的 USB 线，再执行检查与烧录。
 - ROROLEE 是否把 `session_active` 自动转成 Agent Turn 需要真机观察；设备端采用官方通用 I/O manifest/reading 协议，不使用未定义的 JSON 包。
 - RGB 的 Agent 下行端点为官方合成的 `led0`；本地在位置变化时先即时亮灯/熄灯，云端仍可覆盖颜色。

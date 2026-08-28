@@ -32,6 +32,7 @@
           </select>
         </div>
         <div class="launch-actions">
+          <button id="hardwareConnectButton" class="secondary">连接 C 板</button>
           <button id="taskTestButton" class="secondary">仅测试任务理解</button>
           <button id="cameraTestButton" class="secondary">仅测试摄像头</button>
           <button id="startButton" class="primary">开始完整监测</button>
@@ -82,6 +83,7 @@
       </section>
 
       <section class="status-strip" aria-label="连接状态">
+        <div data-status="hardware"><span>C 板硬件</span><b>正在检测</b></div>
         <div data-status="camera"><span>摄像头</span><b>未授权</b></div>
         <div data-status="screen"><span>屏幕</span><b>未共享</b></div>
         <div data-status="agent"><span>Flow Agent</span><b>未连接</b></div>

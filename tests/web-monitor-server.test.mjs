@@ -60,7 +60,41 @@ test("monitor serves the local UI and keeps Agent Stack secrets server-side", as
     assert.equal(joystickResponse.status, 202);
     const hardwareEvents = await fetch(`${baseUrl}/api/hardware/events?after=0`).then((item) => item.json());
     assert.equal(hardwareEvents.events[0].type, "SESSION_END_REQUESTED");
-    assert.equal(hardwareEvents.events[0].payload.trigger, "joystick_returned_to_origin");
+    assert.equal(hardwareEvents.events[0].payload.trigger, "physical_button");
+
+    const ledResponse = await fetch(`${baseUrl}/api/hardware/led`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ on: true, state: "session_active" }),
+    });
+    assert.equal(ledResponse.status, 202);
+    const ledCommands = await fetch(`${baseUrl}/api/hardware/commands?after=0`).then((item) => item.json());
+    assert.equal(ledCommands.commands[0].type, "LED_SET");
+    assert.equal(ledCommands.commands[0].payload.on, true);
+
+    const stopStartedResponse = await fetch(`${baseUrl}/api/session/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "测试实体按钮结束", focus_minutes: 5 }),
+    });
+    const stopStarted = await stopStartedResponse.json();
+    const stopResponse = await fetch(`${baseUrl}/api/session/stop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        local_session_id: stopStarted.local_session_id,
+        coordinator_session_id: stopStarted.coordinator_session_id,
+        task_contract: stopStarted.task_contract,
+        session_started_at: stopStarted.session_started_at,
+        duration_seconds: 12,
+        interruptions: { count: 1, total_seconds: 2.5 },
+        end_reason: "physical_button",
+      }),
+    });
+    assert.equal(stopResponse.status, 201);
+    const stopped = await stopResponse.json();
+    assert.equal(stopped.record.duration_seconds, 12);
+    assert.equal(stopped.record.end_reason, "physical_button");
 
     const reflectionResponse = await fetch(`${baseUrl}/api/hardware/reflection-text`, {
       method: "POST",

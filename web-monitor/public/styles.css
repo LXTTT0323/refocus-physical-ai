@@ -67,7 +67,7 @@ textarea:focus { border-color: rgba(124,241,188,.6); box-shadow: 0 0 0 3px rgba(
 .contract-grid div { min-width: 0; padding: 14px; border-radius: 12px; background: rgba(5,18,15,.72); }
 .contract-grid dt { color: var(--muted); font-size: 11px; margin-bottom: 7px; }
 .contract-grid dd { margin: 0; line-height: 1.55; white-space: pre-line; }
-.status-strip { display: grid; grid-template-columns: repeat(4,1fr); gap: 1px; margin: 18px 0; border-radius: 18px; overflow: hidden; }
+.status-strip { display: grid; grid-template-columns: repeat(5,1fr); gap: 1px; margin: 18px 0; border-radius: 18px; overflow: hidden; }
 .status-strip > div { padding: 14px 18px; background: rgba(8,23,19,.8); }
 .status-strip span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
 .status-strip b { font-size: 14px; }
