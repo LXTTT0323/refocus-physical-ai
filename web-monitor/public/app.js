@@ -679,7 +679,7 @@ async function runVisualClassification() {
   state.visualInFlight = true;
   const source = elements.visualSource.value;
   elements.visualResult.className = "classification-result";
-  elements.visualResult.textContent = "正在截取单张画面并由 flow-coordinator 判断…";
+  elements.visualResult.textContent = "正在截取单张画面并由 OpenAI 快速判断…";
   try {
     const response = await api("/api/context/visual", {
       ...sessionEnvelope(),
@@ -693,8 +693,10 @@ async function runVisualClassification() {
     elements.visualResult.className = `classification-result ${result.classification}`;
     const modeLabel = response.processing?.mode === "local_ocr_then_agent_stack"
       ? `本地 OCR → Agent（识别 ${response.processing.ocr_characters ?? 0} 字）`
-      : response.processing?.mode === "openai_visual_then_agent_stack"
-        ? `OpenAI 视觉 → Agent Stack（${response.processing.visual_trace?.model ?? "视觉模型"}）`
+      : response.processing?.mode === "openai_visual_fast_path"
+        ? `OpenAI 即时视觉（${response.processing.visual_trace?.model ?? "视觉模型"}）`
+        : response.processing?.mode === "openai_visual_failed"
+          ? "OpenAI 视觉超时，本轮已跳过"
         : "Agent Stack 直接看图";
     elements.visualResult.textContent = `${result.classification.toUpperCase()} · ${(result.confidence * 100).toFixed(0)}% · ${modeLabel} · ${result.evidence.join("；")}`;
     addEvent("VISUAL_CONTEXT_CLASSIFIED", {

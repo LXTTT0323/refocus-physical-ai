@@ -7,6 +7,7 @@ async function withServer(run) {
   const server = createMonitorServer({
     coordinatorFactory: () => new MockFlowCoordinator(),
     visionMode: "vision",
+    visualProvider: "agent_stack",
     audioTranscriber: {
       model: "gpt-4o-mini-transcribe",
       transcribe: async () => ({ text: "语音测试成功", model: "gpt-4o-mini-transcribe" }),
@@ -189,6 +190,7 @@ test("visual route falls back to local OCR when the Agent model has no vision", 
   const server = createMonitorServer({
     coordinatorFactory: () => coordinator,
     visionMode: "vision",
+    visualProvider: "agent_stack",
     ocrExtractor: async () => {
       ocrCalls += 1;
       return { text: "REFOCUS 路演 PPT", confidence: 0.91 };
@@ -225,7 +227,7 @@ test("visual route falls back to local OCR when the Agent model has no vision", 
   }
 });
 
-test("visual route lets an external observer describe the image before Agent Stack classifies it", async () => {
+test("visual route uses the external observer fast path without creating an Agent Stack Turn", async () => {
   const coordinator = new MockFlowCoordinator();
   let observedBytes = 0;
   const server = createMonitorServer({
@@ -243,6 +245,14 @@ test("visual route lets an external observer describe the image before Agent Sta
             progress_signals: ["正在编辑幻灯片"],
             distraction_signals: [],
             confidence: 0.94,
+          },
+          relevance: {
+            schema_version: "1.0",
+            classifier: "openai-visual-fast-path",
+            classification: "relevant",
+            confidence: 0.93,
+            evidence: ["正在编辑 RE:FOCUS 路演幻灯片"],
+            matched_hints: { keywords: [], apps: [], domains: [] },
           },
           trace: { provider: "openai", model: "gpt-4.1-mini", response_id: "resp_test", status: "completed" },
         };
@@ -272,7 +282,12 @@ test("visual route lets an external observer describe the image before Agent Sta
     assert.equal(response.status, 201);
     const body = await response.json();
     assert.ok(observedBytes > 0);
-    assert.equal(body.processing.mode, "openai_visual_then_agent_stack");
+    assert.equal(body.processing.mode, "openai_visual_fast_path");
+    assert.equal(body.result.classification, "relevant");
+    assert.equal(
+      coordinator.calls.filter((item) => item.operation === "classifyContext").length,
+      0,
+    );
     assert.equal(body.processing.raw_image_uploaded_to_openai, true);
     assert.equal(body.processing.raw_image_uploaded_to_agent_stack, false);
     assert.equal(body.processing.visual_observation.scene_type, "presentation_editor");

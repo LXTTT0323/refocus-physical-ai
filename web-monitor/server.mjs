@@ -374,25 +374,23 @@ export function createMonitorHandler({
             const observed = await externalVisualObserver.observe(imageBytes, {
               source: body.source,
               contentType: "image/jpeg",
+              taskContract: active.taskContract,
             });
             externalObservation = observed.observation;
             externalTrace = observed.trace;
-            processingMode = "openai_visual_then_agent_stack";
-            result = await active.coordinator.classifyContext({
-              local_session_id: body.local_session_id,
-              task_contract: active.taskContract,
-              observation: {
-                active_app: null,
-                window_title: null,
-                domain: null,
-                screen_shared: body.source === "screen_share",
-                screen_change_score: observation.screen_change_score,
-                visual_source: body.source,
-                visual_observation: externalObservation,
-              },
-            });
+            processingMode = "openai_visual_fast_path";
+            result = observed.relevance;
           } catch (error) {
             fallbackReason = safeMessage(error).slice(0, 240);
+            processingMode = "openai_visual_failed";
+            result = {
+              schema_version: "1.0",
+              classifier: "openai-visual-fast-path",
+              classification: "unknown",
+              confidence: 0,
+              evidence: ["本次视觉请求未能在 15 秒内完成，已跳过，不阻塞后续采样"],
+              matched_hints: { keywords: [], apps: [], domains: [] },
+            };
           }
         }
         if (!result && !active.visionModelUnsupported) {

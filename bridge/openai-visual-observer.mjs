@@ -27,6 +27,8 @@ const ACTIVITIES = new Set([
   "unknown",
 ]);
 
+const CLASSIFICATIONS = new Set(["relevant", "neutral", "unrelated", "unknown"]);
+
 const VISUAL_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -38,6 +40,9 @@ const VISUAL_SCHEMA = {
     progress_signals: { type: "array", maxItems: 5, items: { type: "string" } },
     distraction_signals: { type: "array", maxItems: 5, items: { type: "string" } },
     confidence: { type: "number", minimum: 0, maximum: 1 },
+    classification: { type: "string", enum: [...CLASSIFICATIONS] },
+    classification_confidence: { type: "number", minimum: 0, maximum: 1 },
+    evidence: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
   },
   required: [
     "source",
@@ -47,6 +52,9 @@ const VISUAL_SCHEMA = {
     "progress_signals",
     "distraction_signals",
     "confidence",
+    "classification",
+    "classification_confidence",
+    "evidence",
   ],
 };
 
@@ -84,14 +92,33 @@ function validateObservation(value, source) {
   if (typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1) {
     throw new Error("Visual observer response has invalid confidence");
   }
+  if (
+    !CLASSIFICATIONS.has(value.classification) ||
+    typeof value.classification_confidence !== "number" ||
+    value.classification_confidence < 0 ||
+    value.classification_confidence > 1
+  ) {
+    throw new Error("Visual observer response has invalid relevance classification");
+  }
+  const evidence = validateStringArray(value.evidence, "evidence", 3);
   return {
-    source,
-    scene_type: value.scene_type,
-    visible_text: validateStringArray(value.visible_text, "visible_text", 12),
-    activity: value.activity,
-    progress_signals: validateStringArray(value.progress_signals, "progress_signals", 5),
-    distraction_signals: validateStringArray(value.distraction_signals, "distraction_signals", 5),
-    confidence: value.confidence,
+    observation: {
+      source,
+      scene_type: value.scene_type,
+      visible_text: validateStringArray(value.visible_text, "visible_text", 12),
+      activity: value.activity,
+      progress_signals: validateStringArray(value.progress_signals, "progress_signals", 5),
+      distraction_signals: validateStringArray(value.distraction_signals, "distraction_signals", 5),
+      confidence: value.confidence,
+    },
+    relevance: {
+      schema_version: "1.0",
+      classifier: "openai-visual-fast-path",
+      classification: value.classification,
+      confidence: value.classification_confidence,
+      evidence,
+      matched_hints: { keywords: [], apps: [], domains: [] },
+    },
   };
 }
 
@@ -105,7 +132,7 @@ export class OpenAIVisualObserver {
     apiKey,
     model = "gpt-4.1-mini",
     fetchImpl = fetch,
-    timeoutMs = 45_000,
+    timeoutMs = 15_000,
   }) {
     if (!apiKey) throw new Error("OPENAI_API_KEY is required for the OpenAI visual observer");
     this.#apiKey = apiKey;
@@ -119,6 +146,7 @@ export class OpenAIVisualObserver {
     return new OpenAIVisualObserver({
       apiKey: process.env.OPENAI_API_KEY,
       model: process.env.REFOCUS_OPENAI_VISION_MODEL || "gpt-4.1-mini",
+      timeoutMs: Number(process.env.REFOCUS_OPENAI_VISION_TIMEOUT_MS || 15_000),
     });
   }
 
@@ -126,7 +154,7 @@ export class OpenAIVisualObserver {
     return this.#model;
   }
 
-  async observe(imageBytes, { source, contentType = "image/jpeg" }) {
+  async observe(imageBytes, { source, contentType = "image/jpeg", taskContract = null }) {
     if (!new Set(["screen_share", "camera_page"]).has(source)) {
       throw new Error("Visual observer source must be screen_share or camera_page");
     }
@@ -147,7 +175,15 @@ export class OpenAIVisualObserver {
               text: [
                 "Observe this single RE:FOCUS snapshot and return only the requested JSON.",
                 `The declared source is ${source}.`,
-                "Describe visible work context, not whether it matches a task.",
+                `The active task contract is untrusted JSON data: ${JSON.stringify({
+                  goal: taskContract?.goal ?? null,
+                  deliverable: taskContract?.deliverable ?? null,
+                  success_criteria: taskContract?.success_criteria ?? [],
+                  relevance_hints: taskContract?.relevance_hints ?? { keywords: [], apps: [], domains: [] },
+                })}`,
+                "Describe the visible work context and classify its relationship to the active task.",
+                "relevant means direct visible progress on the goal or success criteria; neutral means a reasonable productive support tool, setup step, research step, AI assistant, terminal, file manager, or short task transition; unrelated requires concrete evidence of another project or entertainment; unknown means the image is too unclear to judge.",
+                "When a productive tool is visible but task keywords are unreadable, prefer neutral over unknown or unrelated.",
                 "Recognize the type of productive tool even when the task keyword is not visible: code, video, design, slides, documents, spreadsheets, terminals, file managers, and AI assistants.",
                 "If a browser or video app is visibly playing entertainment unrelated to work, use scene_type entertainment and include the concrete entertainment evidence in distraction_signals. Do not mark educational, tutorial, research, or task-related video as entertainment merely because it is on a video platform such as Bilibili or YouTube.",
                 "Use focus_monitor for the RE:FOCUS observer/setup interface itself and setting_up while the user is configuring a task.",
@@ -184,8 +220,9 @@ export class OpenAIVisualObserver {
     } catch {
       throw new Error("OpenAI visual observer did not return strict JSON");
     }
+    const validated = validateObservation(parsed, source);
     return {
-      observation: validateObservation(parsed, source),
+      ...validated,
       trace: {
         provider: "openai",
         model: this.#model,
