@@ -5,6 +5,7 @@ import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AgentStackFlowCoordinator } from "../bridge/agent-stack-flow-coordinator.mjs";
 import { extractLocalText } from "../bridge/local-ocr.mjs";
+import { OpenAIVisualObserver } from "../bridge/openai-visual-observer.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(here);
@@ -69,8 +70,13 @@ export function createMonitorServer({
   coordinatorFactory,
   ocrExtractor = extractLocalText,
   visionMode = process.env.AGENT_STACK_VISION_MODE,
+  visualProvider = process.env.REFOCUS_VISUAL_PROVIDER ?? "ocr",
+  visualObserver,
 } = {}) {
   const makeCoordinator = coordinatorFactory ?? (() => AgentStackFlowCoordinator.fromEnvironment());
+  const externalVisualObserver = visualObserver ?? (
+    visualProvider === "openai" ? OpenAIVisualObserver.fromEnvironment() : null
+  );
 
   return createServer(async (request, response) => {
     response.setHeader("Permissions-Policy", "camera=(self), display-capture=(self), microphone=()");
@@ -89,6 +95,9 @@ export function createMonitorServer({
         return json(response, 200, {
           ok: true,
           agent_stack_configured: required.every((name) => Boolean(process.env[name])),
+          visual_provider: externalVisualObserver ? "openai" : (visionMode === "vision" ? "agent_stack" : "local_ocr"),
+          visual_model: externalVisualObserver?.model ?? null,
+          visual_image_leaves_device: Boolean(externalVisualObserver) || visionMode === "vision",
           active_sessions: sessions.size,
         });
       }
@@ -185,10 +194,42 @@ export function createMonitorServer({
           screen_change_score: Number(body.screen_change_score ?? 0),
         };
         let result;
-        let processingMode = "agent_stack_vision";
+        let processingMode = null;
         let ocr = null;
-        if (!active.visionModelUnsupported) {
+        let externalObservation = null;
+        let externalTrace = null;
+        let fallbackReason = null;
+        let rawImageUploadedToOpenAI = false;
+        if (externalVisualObserver) {
           try {
+            rawImageUploadedToOpenAI = true;
+            const observed = await externalVisualObserver.observe(imageBytes, {
+              source: body.source,
+              contentType: "image/jpeg",
+            });
+            externalObservation = observed.observation;
+            externalTrace = observed.trace;
+            processingMode = "openai_visual_then_agent_stack";
+            result = await active.coordinator.classifyContext({
+              local_session_id: body.local_session_id,
+              task_contract: active.taskContract,
+              observation: {
+                active_app: null,
+                window_title: null,
+                domain: null,
+                screen_shared: body.source === "screen_share",
+                screen_change_score: observation.screen_change_score,
+                visual_source: body.source,
+                visual_observation: externalObservation,
+              },
+            });
+          } catch (error) {
+            fallbackReason = safeMessage(error).slice(0, 240);
+          }
+        }
+        if (!result && !active.visionModelUnsupported) {
+          try {
+            processingMode = "agent_stack_vision";
             result = await active.coordinator.classifyVisualContext(
               {
                 local_session_id: body.local_session_id,
@@ -201,6 +242,7 @@ export function createMonitorServer({
           } catch (error) {
             if (!/vision_model_unsupported/i.test(safeMessage(error))) throw error;
             active.visionModelUnsupported = true;
+            fallbackReason ??= "Agent Stack model does not support images";
           }
         }
         if (!result) {
@@ -226,9 +268,13 @@ export function createMonitorServer({
           processing: {
             mode: processingMode,
             raw_image_uploaded_to_agent_stack: processingMode === "agent_stack_vision",
+            raw_image_uploaded_to_openai: rawImageUploadedToOpenAI,
             continuous_video_uploaded: false,
             ocr_characters: ocr?.text.length ?? null,
             ocr_confidence: ocr?.confidence ?? null,
+            visual_observation: externalObservation,
+            visual_trace: externalTrace,
+            fallback_reason: fallbackReason,
           },
           trace: active.coordinator.trace,
         });

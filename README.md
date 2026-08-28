@@ -1,6 +1,6 @@
 # VentureD AI Hardware Hackathon 项目库
 
-> 状态：RE:FOCUS 方案已锁定；本地网页监测器已连接真实 `flow-coordinator`；屏幕/摄像头页面统一输入与本地 OCR 降级已验收；三个产品 Skill v1 已完成本地合同验证、尚未线上安装
+> 状态：RE:FOCUS 方案已锁定；本地网页监测器已连接真实 `flow-coordinator`；屏幕/摄像头统一输入、本地 OCR 与独立 OpenAI 视觉观察器均已验收；三个产品 Skill v1 已完成本地合同验证、尚未线上安装
 > 最后核对：2026-08-28（Asia/Shanghai）  
 > 目标：用一套可重复演示的 Physical AI 闭环参赛，并让所有产品、技术和交付决策服从同一套官方标准。
 

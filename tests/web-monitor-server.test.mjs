@@ -133,3 +133,60 @@ test("visual route falls back to local OCR when the Agent model has no vision", 
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("visual route lets an external observer describe the image before Agent Stack classifies it", async () => {
+  const coordinator = new MockFlowCoordinator();
+  let observedBytes = 0;
+  const server = createMonitorServer({
+    coordinatorFactory: () => coordinator,
+    visualObserver: {
+      model: "gpt-4.1-mini",
+      observe: async (bytes, { source }) => {
+        observedBytes = bytes.length;
+        return {
+          observation: {
+            source,
+            scene_type: "presentation_editor",
+            visible_text: ["REFOCUS 路演"],
+            activity: "editing",
+            progress_signals: ["正在编辑幻灯片"],
+            distraction_signals: [],
+            confidence: 0.94,
+          },
+          trace: { provider: "openai", model: "gpt-4.1-mini", response_id: "resp_test", status: "completed" },
+        };
+      },
+    },
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const started = await fetch(`${baseUrl}/api/session/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "完成 RE:FOCUS 路演 PPT", focus_minutes: 30 }),
+    }).then((response) => response.json());
+    const response = await fetch(`${baseUrl}/api/context/visual`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        local_session_id: started.local_session_id,
+        source: "screen_share",
+        image_data_url: "data:image/jpeg;base64,/9j/2Q==",
+      }),
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.ok(observedBytes > 0);
+    assert.equal(body.processing.mode, "openai_visual_then_agent_stack");
+    assert.equal(body.processing.raw_image_uploaded_to_openai, true);
+    assert.equal(body.processing.raw_image_uploaded_to_agent_stack, false);
+    assert.equal(body.processing.visual_observation.scene_type, "presentation_editor");
+    assert.equal(body.processing.visual_trace.response_id, "resp_test");
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});

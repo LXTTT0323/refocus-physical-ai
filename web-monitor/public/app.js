@@ -14,6 +14,7 @@ const elements = {
   visualClassify: $("#visualClassifyButton"),
   visualSource: $("#visualSource"),
   visualResult: $("#visualResult"),
+  visualPrivacy: $("#visualPrivacy"),
   clarificationCard: $("#clarificationCard"),
   clarificationQuestion: $("#clarificationQuestion"),
   clarificationAnswer: $("#clarificationAnswer"),
@@ -116,6 +117,22 @@ async function api(path, body) {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
   return result;
+}
+
+async function loadVisualProvider() {
+  try {
+    const response = await fetch("/api/health");
+    const health = await response.json();
+    if (health.visual_provider === "openai") {
+      elements.visualPrivacy.textContent = `外部视觉已启用（${health.visual_model}）：每 30 秒最多一张压缩快照发送到 OpenAI，结构化观察再交给 Agent Stack；不上传连续视频。`;
+    } else if (health.visual_provider === "agent_stack") {
+      elements.visualPrivacy.textContent = "Agent Stack 直接视觉已启用：每 30 秒最多发送一张压缩快照；不上传连续视频。";
+    } else {
+      elements.visualPrivacy.textContent = "隐私模式：每 30 秒最多在本机 OCR 一张快照，只有提取文字发送给 Agent Stack；不上传连续视频。";
+    }
+  } catch {
+    elements.visualPrivacy.textContent = "无法确认视觉处理方式，请检查本地服务。";
+  }
 }
 
 async function loadFaceModel() {
@@ -596,13 +613,16 @@ async function runVisualClassification() {
     elements.visualResult.className = `classification-result ${result.classification}`;
     const modeLabel = response.processing?.mode === "local_ocr_then_agent_stack"
       ? `本地 OCR → Agent（识别 ${response.processing.ocr_characters ?? 0} 字）`
-      : "Agent 直接看图";
+      : response.processing?.mode === "openai_visual_then_agent_stack"
+        ? `OpenAI 视觉 → Agent Stack（${response.processing.visual_trace?.model ?? "视觉模型"}）`
+        : "Agent Stack 直接看图";
     elements.visualResult.textContent = `${result.classification.toUpperCase()} · ${(result.confidence * 100).toFixed(0)}% · ${modeLabel} · ${result.evidence.join("；")}`;
     addEvent("VISUAL_CONTEXT_CLASSIFIED", {
       source,
       classification: result.classification,
       processing_mode: response.processing?.mode,
       raw_image_uploaded_to_agent_stack: response.processing?.raw_image_uploaded_to_agent_stack,
+      raw_image_uploaded_to_openai: response.processing?.raw_image_uploaded_to_openai,
       status: response.trace.at(-1)?.status,
       assistant_message: response.trace.at(-1)?.assistantMessageObserved,
       continuous_video_uploaded: false,
@@ -639,3 +659,4 @@ elements.clarify.addEventListener("click", clarifyTask);
 elements.classify.addEventListener("click", classifyContext);
 elements.visualClassify.addEventListener("click", toggleVisualClassification);
 loadFaceModel();
+loadVisualProvider();

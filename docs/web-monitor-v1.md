@@ -4,7 +4,7 @@
 
 用户打开本地网页，点击一次“开始监测”，授权电脑摄像头和屏幕共享。网页在本地提取人在场、头部方向、闭眼候选、哈欠候选和屏幕变化等信号；任务理解与当前页面相关性由 TiDB Agent Stack 的 `flow-coordinator` 判断。
 
-默认采用隐私优先模式：摄像头和屏幕快照只在本机做 OCR，Agent Stack 只接收提取出的文字、用户任务和数值化信号；连续视频永不上传。只有显式设置 `AGENT_STACK_VISION_MODE=vision`，并确认所选 Agent 模型支持图片后，才会把单张压缩快照交给 Agent Stack。
+默认采用隐私优先模式：摄像头和屏幕快照只在本机做 OCR，Agent Stack 只接收提取出的文字、用户任务和数值化信号；连续视频永不上传。需要理解纯图片和界面结构时，可显式启用独立 OpenAI `visual-observer`：单张压缩快照先交给视觉模型生成固定 JSON，再由 Agent Stack `flow-coordinator` 判断任务相关性。
 
 ## 成功标准
 
@@ -43,7 +43,9 @@
 - 保留手动填写应用、窗口标题或域名的稳定降级入口。
 - 自动入口把“共享屏幕页面”和“摄像头拍到的页面”归一成同一份视觉观察；用户只需切换来源，不改 Agent、状态机或硬件协议。
 - 默认每 30 秒最多截取一张 480×270 JPEG，在本机 OCR 后把文字交给同一个 `context-relevance` 判断。
-- 当前 `flow-coordinator` 模型实测不支持图片输入，返回 `vision_model_unsupported`；因此当前可用路径是本地 OCR。以后换成已验证的视觉模型时，可设置 `AGENT_STACK_VISION_MODE=vision` 使用直接看图路径。
+- 当前 Agent Stack 模型目录实测只有 `qwen3.7-plus`，且图片 Turn 返回 `vision_model_unsupported`，因此不能在平台内创建真正看图的第二 Agent。
+- 已实现独立视觉路径：`OpenAI gpt-4.1-mini → 固定 visual_observation JSON → Agent Stack context-relevance`。视觉模型只描述画面，不判断任务相关性、不识别人身份、不输出硬件命令。
+- 开启独立视觉时，页面会明确显示快照将发送至 OpenAI；仍然每 30 秒最多一张，连续视频永不上传。调用失败会降级到本地 OCR。
 - 本地 OCR 适合网页、PPT、文档和带文字的实体页面；对绘画、纯图像或没有文字的动作只能返回低置信度/`unknown`，不能假装已经理解。
 - 普通网页无法读取操作系统中任意前台窗口的真实标题；后续若要全自动获取，需要桌面 Bridge 或浏览器扩展。
 
@@ -72,7 +74,12 @@ $env:AGENT_STACK_USER_API_KEY = [Environment]::GetEnvironmentVariable("AGENT_STA
 $env:AGENT_STACK_PROJECT_ID = [Environment]::GetEnvironmentVariable("AGENT_STACK_PROJECT_ID", "User")
 $env:AGENT_STACK_AGENT_ID = [Environment]::GetEnvironmentVariable("AGENT_STACK_AGENT_ID", "User")
 # 默认无需配置视觉模式，图片只在本机 OCR。
-# 仅在另一个 Agent 已实测支持图片后，才主动启用：
+# 使用外部视觉观察器（快照会发送至 OpenAI）：
+$env:OPENAI_API_KEY = [Environment]::GetEnvironmentVariable("OPENAI_API_KEY", "User")
+$env:REFOCUS_VISUAL_PROVIDER = "openai"
+# 可选，默认就是 gpt-4.1-mini：
+# $env:REFOCUS_OPENAI_VISION_MODEL = "gpt-4.1-mini"
+# 只有 Agent Stack 后续提供已验证的视觉模型时才使用：
 # $env:AGENT_STACK_VISION_MODE = "vision"
 npm install
 npm run monitor
