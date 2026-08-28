@@ -61,3 +61,16 @@
 - fallback reason：`null`
 
 视觉观察器提取到 `RE:FOCUS LOCAL OBSERVER`、任务输入与连接状态等页面事实；它没有直接输出相关性或灯光命令。最终相关性仍由 `flow-coordinator` 返回。
+
+## 生产力工具误判修正
+
+曾观察到代码编辑器画面被判为 `UNRELATED · 95%`，证据仅为“没有出现 PPT/RE:FOCUS 关键词”。该规则会把开发 RE:FOCUS、临时使用 GPT、搜索资料或剪辑 Demo 等合理步骤误判为跑偏。
+
+修正后的确定性边界：
+
+- 有直接任务证据：`relevant`。
+- 生产力工具且没有明确冲突/娱乐信号：至少 `neutral`，confidence 上限 `0.65`。
+- 明确其他项目或娱乐内容：保留 `unrelated`。
+- `relevant` 与 `neutral` 均可通过绿灯门槛，但仍需人在场并连续稳定 5 秒。
+
+自动测试已覆盖“PPT 任务期间编辑 React/Next.js，模型仅因关键词缺失而判 unrelated”的案例；最终结果被安全收敛为 `neutral`。

@@ -317,6 +317,50 @@ test("context relevance deterministically caps extra evidence candidates", async
   assert.deepEqual(result.evidence, ["一", "二", "三"]);
 });
 
+test("productive tools without explicit distraction are neutral instead of unrelated", async () => {
+  const responses = [
+    new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }),
+    successfulTurn(taskContract(), "1"),
+    successfulTurn(contextContract({
+      classification: "unrelated",
+      confidence: 0.95,
+      evidence: ["没有出现 PPT 关键词"],
+    }), "2"),
+  ];
+  const coordinator = new AgentStackFlowCoordinator({
+    baseUrl: "https://example.invalid",
+    apiKey: "test-secret",
+    projectId: "proj_test",
+    agentId: "agent_test",
+    fetchImpl: async () => responses.shift(),
+  });
+  const started = await coordinator.startSession({
+    local_session_id: "local_test",
+    goal: "完成 RE:FOCUS 路演 PPT",
+    focus_minutes: 30,
+  });
+  const result = await coordinator.classifyContext({
+    task_contract: started.task_contract,
+    observation: {
+      visual_observation: {
+        source: "screen_share",
+        scene_type: "code_editor",
+        activity: "editing",
+        visible_text: ["React", "Next.js"],
+        progress_signals: ["正在编辑代码"],
+        distraction_signals: [],
+        confidence: 0.92,
+      },
+    },
+  });
+  assert.equal(result.classification, "neutral");
+  assert.equal(result.confidence, 0.65);
+  assert.match(result.evidence[0], /生产力工具/);
+});
+
 test("context relevance rejects extra reminder or hardware fields", async () => {
   const responses = [
     new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
