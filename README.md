@@ -1,6 +1,6 @@
 # VentureD AI Hardware Hackathon 项目库
 
-> 状态：RE:FOCUS 方案已锁定；Desktop Bridge × `flow-coordinator` 真实闭环与任务澄清已验收；三个产品 Skill v1 已完成本地合同验证、尚未线上安装
+> 状态：RE:FOCUS 方案已锁定；本地网页监测器已连接真实 `flow-coordinator`；任务合同与页面相关性 Turn 已验收；三个产品 Skill v1 已完成本地合同验证、尚未线上安装
 > 最后核对：2026-08-28（Asia/Shanghai）  
 > 目标：用一套可重复演示的 Physical AI 闭环参赛，并让所有产品、技术和交付决策服从同一套官方标准。
 
@@ -206,6 +206,8 @@ Windows Bridge 的本地模拟骨架见 [Windows Bridge v0](docs/windows-bridge-
 真实 Agent Stack 四节点闭环见 [Windows Bridge × Agent Stack 验收](evidence/agent-stack-bridge-2026-08-28.md)。
 
 Agent 云端从账号到硬件协议的逐步验收见 [Agent Stack 十步运行手册](docs/agent-stack-10-step-runbook.md)。
+
+电脑摄像头、屏幕变化、任务合同与页面相关性的网页入口见 [网页监测 V1](docs/web-monitor-v1.md)，真实 Agent Stack 验收见 [网页监测 × Agent Stack 验收](evidence/web-monitor-agent-stack-2026-08-28.md)。
 
 详见 [产品方向与评奖分析](docs/product-direction.md) 和 [技术实施基线](docs/technical-plan.md)。
 

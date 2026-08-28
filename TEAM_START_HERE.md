@@ -2,6 +2,8 @@
 
 这是比赛唯一主仓库。产品决策、Agent Stack、Desktop Bridge、协议、测试和 C 板固件都以这里为准。
 
+当前可先运行网页监测器：在 PowerShell 加载四个 `AGENT_STACK_*` 用户环境变量后执行 `npm install` 与 `npm run monitor`，再打开 `http://127.0.0.1:4173`。完整标准见 `docs/web-monitor-v1.md`。
+
 ## 1. 第一次获取代码
 
 ```bash

@@ -1,0 +1,426 @@
+import { FaceLandmarker, FilesetResolver } from "/vendor/vision_bundle.mjs";
+
+const $ = (selector) => document.querySelector(selector);
+const demoMode = new URLSearchParams(location.search).get("demo") === "1";
+
+const elements = {
+  goal: $("#goal"),
+  minutes: $("#minutes"),
+  start: $("#startButton"),
+  clarify: $("#clarifyButton"),
+  classify: $("#classifyButton"),
+  clarificationCard: $("#clarificationCard"),
+  clarificationQuestion: $("#clarificationQuestion"),
+  clarificationAnswer: $("#clarificationAnswer"),
+  cameraVideo: $("#cameraVideo"),
+  screenVideo: $("#screenVideo"),
+  screenCanvas: $("#screenCanvas"),
+  personState: $("#personState"),
+  screenState: $("#screenState"),
+  present: $("#presentMetric"),
+  missing: $("#missingMetric"),
+  head: $("#headMetric"),
+  eye: $("#eyeMetric"),
+  yawn: $("#yawnMetric"),
+  model: $("#modelMetric"),
+  screenLabel: $("#screenLabel"),
+  change: $("#changeMetric"),
+  stable: $("#stableMetric"),
+  activeApp: $("#activeApp"),
+  windowTitle: $("#windowTitle"),
+  domain: $("#domain"),
+  classification: $("#classificationResult"),
+  focusDecision: $("#focusDecision"),
+  eventList: $("#eventList"),
+};
+
+const state = {
+  running: false,
+  faceLandmarker: null,
+  localSessionId: null,
+  taskContract: null,
+  cameraStream: null,
+  screenStream: null,
+  present: false,
+  lastFaceAt: 0,
+  missingSeconds: 0,
+  headDirection: "unknown",
+  eyeState: "unknown",
+  yawnDetected: false,
+  blinkCandidateAt: 0,
+  yawnCandidateAt: 0,
+  screenShared: false,
+  screenChangeScore: 0,
+  lastScreenChangeAt: 0,
+  screenStableSeconds: 0,
+  previousScreenPixels: null,
+  contextClassification: "unknown",
+  readySince: 0,
+  events: [],
+};
+
+function setConnection(name, text, kind = "") {
+  const node = document.querySelector(`[data-status="${name}"]`);
+  node.className = kind;
+  node.querySelector("b").textContent = text;
+}
+
+function badge(node, text, kind) {
+  node.textContent = text;
+  node.className = `state-badge ${kind}`;
+}
+
+function addEvent(type, payload) {
+  state.events.unshift({ time: new Date().toLocaleTimeString(), type, payload });
+  state.events = state.events.slice(0, 8);
+  elements.eventList.innerHTML = state.events
+    .map((item) => `<li><b>${item.time} ${item.type}</b> ${escapeHtml(JSON.stringify(item.payload))}</li>`)
+    .join("");
+}
+
+function escapeHtml(value) {
+  return value.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]);
+}
+
+async function api(path, body) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
+  return result;
+}
+
+async function loadFaceModel() {
+  if (state.faceLandmarker || demoMode) return;
+  try {
+    elements.model.textContent = "加载中";
+    const vision = await FilesetResolver.forVisionTasks("/vendor/wasm");
+    state.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: "/models/face_landmarker.task" },
+      runningMode: "VIDEO",
+      numFaces: 1,
+      minFaceDetectionConfidence: 0.55,
+      minFacePresenceConfidence: 0.55,
+      minTrackingConfidence: 0.55,
+      outputFaceBlendshapes: true,
+    });
+    elements.model.textContent = "MediaPipe 就绪";
+  } catch (error) {
+    elements.model.textContent = "模型失败";
+    addEvent("MODEL_ERROR", { message: error.message });
+  }
+}
+
+function blendshapeMap(result) {
+  const categories = result.faceBlendshapes?.[0]?.categories ?? [];
+  return new Map(categories.map((item) => [item.categoryName, item.score]));
+}
+
+function analyzeFaceResult(result, now) {
+  const landmarks = result.faceLandmarks?.[0];
+  if (!landmarks) {
+    state.present = false;
+    state.missingSeconds = state.lastFaceAt ? Math.max(0, (now - state.lastFaceAt) / 1000) : 0;
+    state.headDirection = "unknown";
+    state.eyeState = "unknown";
+    state.yawnDetected = false;
+    state.blinkCandidateAt = 0;
+    state.yawnCandidateAt = 0;
+    renderPersonMetrics();
+    return;
+  }
+
+  state.present = true;
+  state.lastFaceAt = now;
+  state.missingSeconds = 0;
+
+  const nose = landmarks[1];
+  const left = landmarks[234];
+  const right = landmarks[454];
+  const top = landmarks[10];
+  const chin = landmarks[152];
+  const width = Math.max(0.001, Math.abs(right.x - left.x));
+  const height = Math.max(0.001, Math.abs(chin.y - top.y));
+  const yaw = (nose.x - (left.x + right.x) / 2) / width;
+  const pitch = (nose.y - (top.y + chin.y) / 2) / height;
+  if (Math.abs(pitch) > 0.16) state.headDirection = "away";
+  else if (yaw < -0.11) state.headDirection = "left";
+  else if (yaw > 0.11) state.headDirection = "right";
+  else state.headDirection = "toward_screen";
+
+  const shapes = blendshapeMap(result);
+  const blink = ((shapes.get("eyeBlinkLeft") ?? 0) + (shapes.get("eyeBlinkRight") ?? 0)) / 2;
+  if (blink > 0.55) state.blinkCandidateAt ||= now;
+  else state.blinkCandidateAt = 0;
+  state.eyeState = state.blinkCandidateAt && now - state.blinkCandidateAt >= 800 ? "closed" : "open";
+
+  const jawOpen = shapes.get("jawOpen") ?? 0;
+  if (jawOpen > 0.58) state.yawnCandidateAt ||= now;
+  else state.yawnCandidateAt = 0;
+  state.yawnDetected = Boolean(state.yawnCandidateAt && now - state.yawnCandidateAt >= 1200);
+  renderPersonMetrics();
+}
+
+function renderPersonMetrics() {
+  elements.present.textContent = state.present ? "是" : "否";
+  elements.missing.textContent = `${state.missingSeconds.toFixed(1)} 秒`;
+  elements.head.textContent = {
+    toward_screen: "朝向屏幕",
+    left: "向左偏离",
+    right: "向右偏离",
+    away: "上下偏离",
+    unknown: "未知",
+  }[state.headDirection];
+  elements.eye.textContent = { open: "睁开", closed: "持续闭眼", unknown: "未知" }[state.eyeState];
+  elements.yawn.textContent = state.yawnDetected ? "检测到候选" : "否";
+  if (state.present) badge(elements.personState, "人在场", state.headDirection === "toward_screen" ? "good" : "warn");
+  else badge(elements.personState, state.missingSeconds >= 30 ? "离席" : "未检测到", state.missingSeconds >= 30 ? "bad" : "warn");
+  updateReadyGate();
+}
+
+let lastFaceFrameAt = 0;
+function faceLoop(now) {
+  if (!state.running) return;
+  if (state.faceLandmarker && elements.cameraVideo.readyState >= 2 && now - lastFaceFrameAt >= 220) {
+    lastFaceFrameAt = now;
+    try {
+      analyzeFaceResult(state.faceLandmarker.detectForVideo(elements.cameraVideo, now), now);
+    } catch (error) {
+      addEvent("FACE_ERROR", { message: error.message });
+    }
+  }
+  requestAnimationFrame(faceLoop);
+}
+
+function analyzeScreen() {
+  if (!state.running || !state.screenShared || elements.screenVideo.readyState < 2) return;
+  const canvas = elements.screenCanvas;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(elements.screenVideo, 0, 0, canvas.width, canvas.height);
+  const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  const pixels = new Uint8Array(canvas.width * canvas.height);
+  for (let source = 0, target = 0; source < data.length; source += 4, target += 1) {
+    pixels[target] = Math.round(data[source] * 0.299 + data[source + 1] * 0.587 + data[source + 2] * 0.114);
+  }
+  if (state.previousScreenPixels) {
+    let changed = 0;
+    for (let index = 0; index < pixels.length; index += 1) {
+      if (Math.abs(pixels[index] - state.previousScreenPixels[index]) > 18) changed += 1;
+    }
+    state.screenChangeScore = changed / pixels.length;
+    if (state.screenChangeScore >= 0.015) state.lastScreenChangeAt = performance.now();
+  }
+  state.previousScreenPixels = pixels;
+  state.screenStableSeconds = state.lastScreenChangeAt
+    ? Math.max(0, (performance.now() - state.lastScreenChangeAt) / 1000)
+    : 0;
+  elements.change.textContent = `${(state.screenChangeScore * 100).toFixed(1)}%`;
+  elements.stable.textContent = `${state.screenStableSeconds.toFixed(0)} 秒`;
+  badge(elements.screenState, state.screenChangeScore >= 0.015 ? "画面有变化" : "画面稳定", state.screenChangeScore >= 0.015 ? "good" : "neutral");
+}
+
+function updateReadyGate() {
+  const gates = {
+    task: state.taskContract?.status === "ready",
+    present: state.present,
+    context: state.contextClassification === "relevant" || state.contextClassification === "neutral",
+  };
+  const baseReady = gates.task && gates.present && gates.context;
+  if (baseReady) state.readySince ||= performance.now();
+  else state.readySince = 0;
+  gates.stable = Boolean(state.readySince && performance.now() - state.readySince >= 5000);
+
+  for (const [name, pass] of Object.entries(gates)) {
+    document.querySelector(`[data-gate="${name}"]`).classList.toggle("pass", pass);
+  }
+  if (Object.values(gates).every(Boolean)) {
+    elements.focusDecision.textContent = "FOCUSING · 绿灯";
+    elements.focusDecision.classList.add("ready");
+  } else {
+    elements.focusDecision.textContent = "SETUP · 黄灯";
+    elements.focusDecision.classList.remove("ready");
+  }
+}
+
+function emitSample() {
+  if (!state.running) return;
+  addEvent("ACTIVITY_SAMPLE", {
+    presence: { present: state.present, missing_seconds: Number(state.missingSeconds.toFixed(1)) },
+    camera: {
+      head_direction: state.headDirection,
+      eye_state: state.eyeState,
+      yawn_detected: state.yawnDetected,
+    },
+    computer: {
+      screen_shared: state.screenShared,
+      screen_change_score: Number(state.screenChangeScore.toFixed(3)),
+    },
+  });
+}
+
+async function startAgentSession() {
+  setConnection("agent", "连接中", "warn");
+  const result = await api("/api/session/start", {
+    goal: elements.goal.value,
+    focus_minutes: Number(elements.minutes.value),
+  });
+  state.localSessionId = result.local_session_id;
+  state.taskContract = result.task_contract;
+  setConnection("agent", "已连接 flow-coordinator", "ok");
+  renderTaskContract();
+  addEvent("AGENT_SESSION_READY", {
+    status: state.taskContract.status,
+    trace_status: result.trace.at(-1)?.status,
+    assistant_message: result.trace.at(-1)?.assistantMessageObserved,
+    coordinator_session_id: result.coordinator_session_id,
+    turn_id: result.trace.at(-1)?.turnId,
+  });
+}
+
+function renderTaskContract() {
+  const ready = state.taskContract?.status === "ready";
+  setConnection("task", ready ? "ready" : "需要补充", ready ? "ok" : "warn");
+  elements.classify.disabled = !ready;
+  elements.clarificationCard.classList.toggle("hidden", ready);
+  if (!ready) elements.clarificationQuestion.textContent = state.taskContract?.clarification_question ?? "请补充任务";
+  updateReadyGate();
+}
+
+async function startMonitoring() {
+  elements.start.disabled = true;
+  elements.start.textContent = "正在授权…";
+  try {
+    if (demoMode) {
+      state.running = true;
+      state.screenShared = true;
+      state.present = true;
+      state.lastFaceAt = performance.now();
+      state.headDirection = "toward_screen";
+      state.eyeState = "open";
+      state.screenChangeScore = 0.08;
+      elements.model.textContent = "演示信号";
+      setConnection("camera", "演示已就绪", "ok");
+      setConnection("screen", "演示已共享", "ok");
+      badge(elements.personState, "人在场", "good");
+      badge(elements.screenState, "画面有变化", "good");
+      elements.present.textContent = "是";
+      elements.missing.textContent = "0.0 秒";
+      elements.head.textContent = "朝向屏幕";
+      elements.eye.textContent = "睁开";
+      elements.yawn.textContent = "否";
+      elements.change.textContent = "8.0%";
+      elements.stable.textContent = "0 秒";
+      await startAgentSession();
+      updateReadyGate();
+      setInterval(emitSample, 5000);
+      setInterval(updateReadyGate, 500);
+      elements.start.textContent = "监测运行中";
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || !navigator.mediaDevices?.getDisplayMedia) {
+      throw new Error("当前浏览器不支持摄像头或屏幕共享，请使用最新版 Chrome/Edge");
+    }
+
+    const displayPromise = navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: 5, max: 10 } },
+      audio: false,
+      selfBrowserSurface: "exclude",
+      surfaceSwitching: "include",
+    });
+    const cameraPromise = navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+      audio: false,
+    });
+    [state.screenStream, state.cameraStream] = await Promise.all([displayPromise, cameraPromise]);
+    state.screenShared = true;
+    state.lastScreenChangeAt = performance.now();
+    elements.screenVideo.srcObject = state.screenStream;
+    elements.cameraVideo.srcObject = state.cameraStream;
+    document.querySelector(".camera-panel .video-wrap").classList.add("live");
+    document.querySelector(".screen-panel .video-wrap").classList.add("live");
+    setConnection("camera", "已授权，本地分析", "ok");
+    setConnection("screen", "正在共享", "ok");
+    const screenTrack = state.screenStream.getVideoTracks()[0];
+    elements.screenLabel.textContent = screenTrack.label || "已选择的屏幕";
+    elements.activeApp.value ||= screenTrack.label || "";
+    screenTrack.addEventListener("ended", () => {
+      state.screenShared = false;
+      setConnection("screen", "共享已停止", "bad");
+      badge(elements.screenState, "共享已停止", "bad");
+      updateReadyGate();
+    });
+    await loadFaceModel();
+    await startAgentSession();
+    state.running = true;
+    requestAnimationFrame(faceLoop);
+    setInterval(analyzeScreen, 1000);
+    setInterval(emitSample, 5000);
+    setInterval(updateReadyGate, 500);
+    elements.start.textContent = "监测运行中";
+    addEvent("MONITORING_STARTED", { camera: true, screen: true });
+  } catch (error) {
+    elements.start.disabled = false;
+    elements.start.textContent = "重新开始";
+    setConnection("camera", "授权未完成", "bad");
+    setConnection("screen", "授权未完成", "bad");
+    addEvent("START_ERROR", { message: error.message });
+  }
+}
+
+async function clarifyTask() {
+  elements.clarify.disabled = true;
+  try {
+    const result = await api("/api/session/clarify", {
+      local_session_id: state.localSessionId,
+      answer: elements.clarificationAnswer.value,
+    });
+    state.taskContract = result.task_contract;
+    renderTaskContract();
+    addEvent("TASK_CLARIFIED", { status: state.taskContract.status });
+  } catch (error) {
+    addEvent("CLARIFY_ERROR", { message: error.message });
+  } finally {
+    elements.clarify.disabled = false;
+  }
+}
+
+async function classifyContext() {
+  elements.classify.disabled = true;
+  elements.classification.textContent = "flow-coordinator 判断中…";
+  try {
+    const response = await api("/api/context/relevance", {
+      local_session_id: state.localSessionId,
+      observation: {
+        active_app: elements.activeApp.value || null,
+        window_title: elements.windowTitle.value || null,
+        domain: elements.domain.value || null,
+        screen_shared: state.screenShared,
+        screen_change_score: state.screenChangeScore,
+      },
+    });
+    const result = response.result;
+    state.contextClassification = result.classification;
+    elements.classification.className = `classification-result ${result.classification}`;
+    elements.classification.textContent = `${result.classification.toUpperCase()} · ${(result.confidence * 100).toFixed(0)}% · ${result.evidence.join("；")}`;
+    addEvent("CONTEXT_CLASSIFIED", {
+      classification: result.classification,
+      status: response.trace.at(-1)?.status,
+      assistant_message: response.trace.at(-1)?.assistantMessageObserved,
+    });
+    updateReadyGate();
+  } catch (error) {
+    elements.classification.className = "classification-result unrelated";
+    elements.classification.textContent = `判断失败：${error.message}`;
+  } finally {
+    elements.classify.disabled = state.taskContract?.status !== "ready";
+  }
+}
+
+elements.start.addEventListener("click", startMonitoring);
+elements.clarify.addEventListener("click", clarifyTask);
+elements.classify.addEventListener("click", classifyContext);
+loadFaceModel();

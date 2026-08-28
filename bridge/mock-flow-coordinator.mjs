@@ -3,6 +3,7 @@ export class MockFlowCoordinator {
 
   async startSession(input) {
     this.calls.push({ operation: "startSession", input });
+    const pptTask = /ppt|powerpoint/i.test(input.goal);
     return {
       coordinator_session_id: `mock_${input.local_session_id}`,
       task_contract: {
@@ -13,7 +14,11 @@ export class MockFlowCoordinator {
         deliverable: input.goal,
         success_criteria: [`完成：${input.goal}`],
         focus_minutes: input.focus_minutes,
-        relevance_hints: { keywords: [], apps: [], domains: [] },
+        relevance_hints: {
+          keywords: pptTask ? ["RE:FOCUS"] : [],
+          apps: pptTask ? ["PowerPoint"] : [],
+          domains: [],
+        },
         clarification_question: null,
         confidence: 0.9,
       },
@@ -33,6 +38,28 @@ export class MockFlowCoordinator {
       relevance_hints: { keywords: [], apps: [], domains: [] },
       clarification_question: null,
       confidence: 0.9,
+    };
+  }
+
+  async classifyContext(input) {
+    this.calls.push({ operation: "classifyContext", input });
+    const title = input.observation.window_title ?? "";
+    const app = input.observation.active_app ?? "";
+    const haystack = `${app} ${title}`.toLowerCase();
+    const matchedKeywords = input.task_contract.relevance_hints.keywords.filter((value) =>
+      haystack.includes(value.toLowerCase()),
+    );
+    const matchedApps = input.task_contract.relevance_hints.apps.filter((value) =>
+      app.toLowerCase().includes(value.toLowerCase()),
+    );
+    const relevant = matchedKeywords.length > 0 || matchedApps.length > 0;
+    return {
+      schema_version: "1.0",
+      skill: "context-relevance",
+      classification: relevant ? "relevant" : "unknown",
+      confidence: relevant ? 0.95 : 0.35,
+      evidence: relevant ? ["Matched task-provided relevance hints"] : ["Insufficient metadata"],
+      matched_hints: { keywords: matchedKeywords, apps: matchedApps, domains: [] },
     };
   }
 

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>RE:FOCUS 本地观察器</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">RE:FOCUS · LOCAL OBSERVER</p>
+          <h1>让专注被看见，<span>不让隐私离开电脑。</span></h1>
+          <p class="lede">摄像头与屏幕只在本地分析。只有结构化信号和你主动填写的窗口信息会发送给 flow-coordinator。</p>
+        </div>
+        <div class="privacy-pill"><i></i> 原始画面不上云</div>
+      </header>
+
+      <section class="launch-card">
+        <div class="goal-field">
+          <label for="goal">这次要完成什么？</label>
+          <input id="goal" value="完成 RE:FOCUS 比赛路演 PPT 的前三页" maxlength="500" />
+        </div>
+        <div class="duration-field">
+          <label for="minutes">计划时长</label>
+          <select id="minutes">
+            <option value="25">25 分钟</option>
+            <option value="45" selected>45 分钟</option>
+            <option value="60">60 分钟</option>
+          </select>
+        </div>
+        <button id="startButton" class="primary">开始监测</button>
+        <p class="permission-note">首次点击会出现两个系统授权框：摄像头，以及你选择共享的屏幕或任务窗口。</p>
+      </section>
+
+      <section id="clarificationCard" class="clarification-card hidden">
+        <p class="eyebrow">FLOW-COORDINATOR 需要补充</p>
+        <h2 id="clarificationQuestion"></h2>
+        <div class="clarification-row">
+          <input id="clarificationAnswer" placeholder="补充一个具体交付物" />
+          <button id="clarifyButton">提交补充</button>
+        </div>
+      </section>
+
+      <section class="status-strip" aria-label="连接状态">
+        <div data-status="camera"><span>摄像头</span><b>未授权</b></div>
+        <div data-status="screen"><span>屏幕</span><b>未共享</b></div>
+        <div data-status="agent"><span>Flow Agent</span><b>未连接</b></div>
+        <div data-status="task"><span>任务合同</span><b>未建立</b></div>
+      </section>
+
+      <section class="monitor-grid">
+        <article class="panel camera-panel">
+          <div class="panel-head">
+            <div><p class="eyebrow">PERSON SIGNAL</p><h2>人在工作区吗？</h2></div>
+            <span id="personState" class="state-badge neutral">等待开始</span>
+          </div>
+          <div class="video-wrap">
+            <video id="cameraVideo" autoplay playsinline muted></video>
+            <canvas id="cameraOverlay"></canvas>
+            <div class="video-placeholder">摄像头画面仅在本机显示</div>
+          </div>
+          <div class="metric-grid">
+            <div><span>人在场</span><strong id="presentMetric">—</strong></div>
+            <div><span>连续消失</span><strong id="missingMetric">—</strong></div>
+            <div><span>头部方向</span><strong id="headMetric">—</strong></div>
+            <div><span>眼睛状态</span><strong id="eyeMetric">—</strong></div>
+            <div><span>哈欠候选</span><strong id="yawnMetric">—</strong></div>
+            <div><span>本地模型</span><strong id="modelMetric">加载中</strong></div>
+          </div>
+        </article>
+
+        <article class="panel screen-panel">
+          <div class="panel-head">
+            <div><p class="eyebrow">SCREEN SIGNAL</p><h2>任务画面在推进吗？</h2></div>
+            <span id="screenState" class="state-badge neutral">等待共享</span>
+          </div>
+          <div class="video-wrap screen-wrap">
+            <video id="screenVideo" autoplay playsinline muted></video>
+            <canvas id="screenCanvas"></canvas>
+            <div class="video-placeholder">选择整个屏幕或当前任务窗口</div>
+          </div>
+          <div class="metric-grid screen-metrics">
+            <div><span>共享来源</span><strong id="screenLabel">—</strong></div>
+            <div><span>画面变化</span><strong id="changeMetric">—</strong></div>
+            <div><span>连续稳定</span><strong id="stableMetric">—</strong></div>
+          </div>
+          <div class="context-form">
+            <p>网页无法读取操作系统的前台窗口标题。第一版由你填写或粘贴，Flow Agent 负责语义判断。</p>
+            <div class="context-fields">
+              <input id="activeApp" placeholder="应用，例如 PowerPoint" />
+              <input id="windowTitle" placeholder="窗口标题，例如 REFOCUS 路演.pptx" />
+              <input id="domain" placeholder="域名（可选）" />
+            </div>
+            <button id="classifyButton" disabled>让 flow-coordinator 判断相关性</button>
+            <div id="classificationResult" class="classification-result">尚未判断</div>
+          </div>
+        </article>
+      </section>
+
+      <section class="bottom-grid">
+        <article class="panel readiness-panel">
+          <p class="eyebrow">FOCUS READY GATE</p>
+          <h2>进入绿色状态前，四项必须同时成立</h2>
+          <ul id="readinessList">
+            <li data-gate="task"><i></i><span>任务合同为 ready</span></li>
+            <li data-gate="present"><i></i><span>检测到人在场</span></li>
+            <li data-gate="context"><i></i><span>当前窗口相关</span></li>
+            <li data-gate="stable"><i></i><span>条件连续稳定至少 5 秒</span></li>
+          </ul>
+          <div id="focusDecision" class="focus-decision">SETUP · 黄灯</div>
+        </article>
+        <article class="panel event-panel">
+          <div class="panel-head"><div><p class="eyebrow">LOCAL EVENT STREAM</p><h2>最近结构化采样</h2></div></div>
+          <ol id="eventList"><li>等待监测开始</li></ol>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

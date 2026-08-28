@@ -61,6 +61,22 @@ function taskContract(overrides = {}) {
   });
 }
 
+function contextContract(overrides = {}) {
+  return JSON.stringify({
+    schema_version: "1.0",
+    skill: "context-relevance",
+    classification: "relevant",
+    confidence: 0.94,
+    evidence: ["PowerPoint 与任务应用提示匹配"],
+    matched_hints: {
+      keywords: ["RE:FOCUS"],
+      apps: ["PowerPoint"],
+      domains: [],
+    },
+    ...overrides,
+  });
+}
+
 test("real coordinator adapter creates one Session and parses NDJSON Turns", async () => {
   const responses = [
     new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
@@ -172,5 +188,74 @@ test("adapter rejects non-JSON assistant output", async () => {
       focus_minutes: 30,
     }),
     /not strict JSON/,
+  );
+});
+
+test("context relevance is a strict succeeded Turn and cannot contain hardware commands", async () => {
+  const responses = [
+    new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }),
+    successfulTurn(taskContract(), "1"),
+    successfulTurn(contextContract(), "2"),
+  ];
+  const coordinator = new AgentStackFlowCoordinator({
+    baseUrl: "https://example.invalid",
+    apiKey: "test-secret",
+    projectId: "proj_test",
+    agentId: "agent_test",
+    fetchImpl: async () => responses.shift(),
+  });
+
+  const started = await coordinator.startSession({
+    local_session_id: "local_test",
+    goal: "完成 RE:FOCUS 路演 PPT",
+    focus_minutes: 30,
+  });
+  const result = await coordinator.classifyContext({
+    task_contract: started.task_contract,
+    observation: {
+      active_app: "PowerPoint",
+      window_title: "RE:FOCUS Demo",
+      domain: null,
+      screen_shared: true,
+      screen_change_score: 0.12,
+    },
+  });
+
+  assert.equal(result.classification, "relevant");
+  assert.equal(coordinator.trace.at(-1).status, "succeeded");
+  assert.equal(coordinator.trace.at(-1).assistantMessageObserved, true);
+});
+
+test("context relevance rejects extra reminder or hardware fields", async () => {
+  const responses = [
+    new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }),
+    successfulTurn(taskContract(), "1"),
+    successfulTurn(contextContract({ light: "red_blink" }), "2"),
+  ];
+  const coordinator = new AgentStackFlowCoordinator({
+    baseUrl: "https://example.invalid",
+    apiKey: "test-secret",
+    projectId: "proj_test",
+    agentId: "agent_test",
+    fetchImpl: async () => responses.shift(),
+  });
+  const started = await coordinator.startSession({
+    local_session_id: "local_test",
+    goal: "完成 RE:FOCUS 路演 PPT",
+    focus_minutes: 30,
+  });
+
+  await assert.rejects(
+    coordinator.classifyContext({
+      task_contract: started.task_contract,
+      observation: {},
+    }),
+    /missing or unsupported fields/,
   );
 });
