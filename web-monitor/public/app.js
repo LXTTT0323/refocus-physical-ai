@@ -7,6 +7,7 @@ const elements = {
   goal: $("#goal"),
   minutes: $("#minutes"),
   start: $("#startButton"),
+  taskTest: $("#taskTestButton"),
   cameraTest: $("#cameraTestButton"),
   clarify: $("#clarifyButton"),
   classify: $("#classifyButton"),
@@ -33,6 +34,12 @@ const elements = {
   classification: $("#classificationResult"),
   focusDecision: $("#focusDecision"),
   eventList: $("#eventList"),
+  taskContractCard: $("#taskContractCard"),
+  taskConfidence: $("#taskConfidence"),
+  contractGoal: $("#contractGoal"),
+  contractDeliverable: $("#contractDeliverable"),
+  contractCriteria: $("#contractCriteria"),
+  contractHints: $("#contractHints"),
 };
 
 const state = {
@@ -358,7 +365,36 @@ function renderTaskContract() {
   elements.classify.disabled = !ready;
   elements.clarificationCard.classList.toggle("hidden", ready);
   if (!ready) elements.clarificationQuestion.textContent = state.taskContract?.clarification_question ?? "请补充任务";
+  elements.taskContractCard.classList.remove("hidden");
+  elements.taskConfidence.textContent = `${Math.round((state.taskContract?.confidence ?? 0) * 100)}%`;
+  elements.taskConfidence.className = `state-badge ${ready ? "good" : "warn"}`;
+  elements.contractGoal.textContent = state.taskContract?.goal ?? "等待补充";
+  elements.contractDeliverable.textContent = state.taskContract?.deliverable ?? "等待补充";
+  elements.contractCriteria.textContent = state.taskContract?.success_criteria?.length
+    ? state.taskContract.success_criteria.map((item, index) => `${index + 1}. ${item}`).join("\n")
+    : "等待补充";
+  const hints = state.taskContract?.relevance_hints ?? { keywords: [], apps: [], domains: [] };
+  const hintParts = [
+    hints.apps.length ? `应用：${hints.apps.join("、")}` : null,
+    hints.keywords.length ? `关键词：${hints.keywords.join("、")}` : null,
+    hints.domains.length ? `域名：${hints.domains.join("、")}` : null,
+  ].filter(Boolean);
+  elements.contractHints.textContent = hintParts.join("；") || "没有可靠线索，后续上下文应返回 unknown";
   updateReadyGate();
+}
+
+async function testTaskUnderstanding() {
+  elements.taskTest.disabled = true;
+  elements.taskTest.textContent = "Flow Agent 理解中…";
+  try {
+    await startAgentSession();
+    elements.taskTest.textContent = "任务理解已返回";
+  } catch (error) {
+    elements.taskTest.disabled = false;
+    elements.taskTest.textContent = "重新测试任务理解";
+    setConnection("agent", "任务理解失败", "bad");
+    addEvent("TASK_TEST_ERROR", { message: error.message });
+  }
 }
 
 async function startMonitoring() {
@@ -521,6 +557,7 @@ async function classifyContext() {
 }
 
 elements.start.addEventListener("click", startMonitoring);
+elements.taskTest.addEventListener("click", testTaskUnderstanding);
 elements.cameraTest.addEventListener("click", startCameraTest);
 elements.clarify.addEventListener("click", clarifyTask);
 elements.classify.addEventListener("click", classifyContext);

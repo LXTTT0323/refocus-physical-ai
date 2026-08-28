@@ -56,7 +56,9 @@ function validateTaskContract(value) {
   if (!allowedStatus.has(value.status)) {
     throw new Error("Coordinator response has invalid task status");
   }
-  requireArray(value, "success_criteria", 3);
+  // The model may overproduce candidates even when instructed to return at most three.
+  // Accept a bounded candidate list here, then deterministically pin the product contract to three.
+  requireArray(value, "success_criteria", 8);
   if (
     !value.relevance_hints ||
     typeof value.relevance_hints !== "object" ||
@@ -88,6 +90,27 @@ function validateTaskContract(value) {
     requireString(value, "clarification_question");
   }
   return value;
+}
+
+function normalizeHintText(value) {
+  return String(value ?? "").toLowerCase().replace(/[\s_:\-—，。、《》【】()[\]{}]+/g, "");
+}
+
+function constrainRelevanceHints(contract, sourceText) {
+  const source = normalizeHintText(sourceText);
+  const explicitlyPresent = (value) => source.includes(normalizeHintText(value));
+  const validDomain = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
+  return {
+    ...contract,
+    success_criteria: contract.success_criteria.slice(0, 3),
+    relevance_hints: {
+      keywords: contract.relevance_hints.keywords.filter(explicitlyPresent),
+      apps: contract.relevance_hints.apps.filter(explicitlyPresent),
+      domains: contract.relevance_hints.domains.filter(
+        (value) => validDomain.test(value) && explicitlyPresent(value),
+      ),
+    },
+  };
 }
 
 const TASK_CONTRACT_SHAPE =
@@ -344,7 +367,7 @@ export class AgentStackFlowCoordinator {
       input,
       TASK_CONTRACT_SHAPE,
     );
-    const taskContract = validateTaskContract(result);
+    const taskContract = constrainRelevanceHints(validateTaskContract(result), input.goal);
     return {
       coordinator_session_id: this.#sessionId,
       task_contract: taskContract,
@@ -357,7 +380,10 @@ export class AgentStackFlowCoordinator {
       input,
       TASK_CONTRACT_SHAPE,
     );
-    return validateTaskContract(result);
+    return constrainRelevanceHints(
+      validateTaskContract(result),
+      `${input.previous_contract?.goal ?? ""} ${input.answer ?? ""}`,
+    );
   }
 
   async classifyContext(input) {

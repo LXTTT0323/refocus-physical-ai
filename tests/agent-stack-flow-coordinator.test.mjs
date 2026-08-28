@@ -165,6 +165,66 @@ test("task setup can request and consume one clarification in the same Session",
   assert.equal(coordinator.trace.length, 2);
 });
 
+test("task setup removes invented apps and malformed domains from relevance hints", async () => {
+  const responses = [
+    new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }),
+    successfulTurn(taskContract({
+      goal: "完成 RE:FOCUS 路演 PPT",
+      relevance_hints: {
+        keywords: ["RE:FOCUS", "PPT", "不存在词"],
+        apps: ["PowerPoint", "Keynote"],
+        domains: ["路演", "slides.google.com"],
+      },
+    })),
+  ];
+  const coordinator = new AgentStackFlowCoordinator({
+    baseUrl: "https://example.invalid",
+    apiKey: "test-secret",
+    projectId: "proj_test",
+    agentId: "agent_test",
+    fetchImpl: async () => responses.shift(),
+  });
+
+  const started = await coordinator.startSession({
+    local_session_id: "local_test",
+    goal: "完成 RE:FOCUS 路演 PPT",
+    focus_minutes: 30,
+  });
+  assert.deepEqual(started.task_contract.relevance_hints, {
+    keywords: ["RE:FOCUS", "PPT"],
+    apps: [],
+    domains: [],
+  });
+});
+
+test("task setup deterministically caps model-generated success criteria at three", async () => {
+  const responses = [
+    new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }),
+    successfulTurn(taskContract({
+      success_criteria: ["第一页完成", "第二页完成", "第三页完成", "整体美观"],
+    })),
+  ];
+  const coordinator = new AgentStackFlowCoordinator({
+    baseUrl: "https://example.invalid",
+    apiKey: "test-secret",
+    projectId: "proj_test",
+    agentId: "agent_test",
+    fetchImpl: async () => responses.shift(),
+  });
+  const started = await coordinator.startSession({
+    local_session_id: "local_test",
+    goal: "完成 PPT 前三页",
+    focus_minutes: 30,
+  });
+  assert.deepEqual(started.task_contract.success_criteria, ["第一页完成", "第二页完成", "第三页完成"]);
+});
+
 test("adapter rejects non-JSON assistant output", async () => {
   const responses = [
     new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {

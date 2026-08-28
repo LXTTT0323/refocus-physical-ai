@@ -32,6 +32,7 @@
           </select>
         </div>
         <div class="launch-actions">
+          <button id="taskTestButton" class="secondary">仅测试任务理解</button>
           <button id="cameraTestButton" class="secondary">仅测试摄像头</button>
           <button id="startButton" class="primary">开始完整监测</button>
         </div>
@@ -52,6 +53,19 @@
         <div data-status="screen"><span>屏幕</span><b>未共享</b></div>
         <div data-status="agent"><span>Flow Agent</span><b>未连接</b></div>
         <div data-status="task"><span>任务合同</span><b>未建立</b></div>
+      </section>
+
+      <section id="taskContractCard" class="task-contract-card hidden">
+        <div class="panel-head">
+          <div><p class="eyebrow">TASK CONTRACT</p><h2>Flow Agent 如何理解这次任务</h2></div>
+          <span id="taskConfidence" class="state-badge neutral">—</span>
+        </div>
+        <dl class="contract-grid">
+          <div><dt>目标</dt><dd id="contractGoal">—</dd></div>
+          <div><dt>可见交付物</dt><dd id="contractDeliverable">—</dd></div>
+          <div><dt>成功标准</dt><dd id="contractCriteria">—</dd></div>
+          <div><dt>相关线索</dt><dd id="contractHints">—</dd></div>
+        </dl>
       </section>
 
       <section class="monitor-grid">

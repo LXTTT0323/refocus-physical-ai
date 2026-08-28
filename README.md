@@ -209,6 +209,8 @@ Agent 云端从账号到硬件协议的逐步验收见 [Agent Stack 十步运行
 
 电脑摄像头、屏幕变化、任务合同与页面相关性的网页入口见 [网页监测 V1](docs/web-monitor-v1.md)，真实 Agent Stack 验收见 [网页监测 × Agent Stack 验收](evidence/web-monitor-agent-stack-2026-08-28.md)。
 
+模糊任务追问、具体任务合同和相关线索白名单的最新实测见 [任务检测与理解真人验收](evidence/task-understanding-live-check-2026-08-28.md)。
+
 详见 [产品方向与评奖分析](docs/product-direction.md) 和 [技术实施基线](docs/technical-plan.md)。
 
 ## 官方交付物清单
