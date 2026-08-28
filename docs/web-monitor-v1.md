@@ -4,7 +4,7 @@
 
 用户打开本地网页，点击一次“开始监测”，授权电脑摄像头和屏幕共享。网页在本地提取人在场、头部方向、闭眼候选、哈欠候选和屏幕变化等信号；任务理解与当前页面相关性由 TiDB Agent Stack 的 `flow-coordinator` 判断。
 
-摄像头原始画面和屏幕图像不上传 Agent Stack。云端只接收用户填写的任务、应用名、窗口标题、域名和数值化的屏幕变化信号。
+默认采用隐私优先模式：摄像头和屏幕快照只在本机做 OCR，Agent Stack 只接收提取出的文字、用户任务和数值化信号；连续视频永不上传。只有显式设置 `AGENT_STACK_VISION_MODE=vision`，并确认所选 Agent 模型支持图片后，才会把单张压缩快照交给 Agent Stack。
 
 ## 成功标准
 
@@ -40,7 +40,11 @@
 
 - 屏幕共享启用后，每秒在本地计算一次低分辨率画面变化比例。
 - 变化超过约 1.5% 只代表屏幕有活动，不等同于任务有进展。
-- 第一版由用户填写当前应用、窗口标题或域名，再交给 `context-relevance` 与任务提示交叉判断。
+- 保留手动填写应用、窗口标题或域名的稳定降级入口。
+- 自动入口把“共享屏幕页面”和“摄像头拍到的页面”归一成同一份视觉观察；用户只需切换来源，不改 Agent、状态机或硬件协议。
+- 默认每 30 秒最多截取一张 480×270 JPEG，在本机 OCR 后把文字交给同一个 `context-relevance` 判断。
+- 当前 `flow-coordinator` 模型实测不支持图片输入，返回 `vision_model_unsupported`；因此当前可用路径是本地 OCR。以后换成已验证的视觉模型时，可设置 `AGENT_STACK_VISION_MODE=vision` 使用直接看图路径。
+- 本地 OCR 适合网页、PPT、文档和带文字的实体页面；对绘画、纯图像或没有文字的动作只能返回低置信度/`unknown`，不能假装已经理解。
 - 普通网页无法读取操作系统中任意前台窗口的真实标题；后续若要全自动获取，需要桌面 Bridge 或浏览器扩展。
 
 ### 5. 进入专注状态
@@ -67,6 +71,9 @@ $env:AGENT_STACK_BASE_URL = [Environment]::GetEnvironmentVariable("AGENT_STACK_B
 $env:AGENT_STACK_USER_API_KEY = [Environment]::GetEnvironmentVariable("AGENT_STACK_USER_API_KEY", "User")
 $env:AGENT_STACK_PROJECT_ID = [Environment]::GetEnvironmentVariable("AGENT_STACK_PROJECT_ID", "User")
 $env:AGENT_STACK_AGENT_ID = [Environment]::GetEnvironmentVariable("AGENT_STACK_AGENT_ID", "User")
+# 默认无需配置视觉模式，图片只在本机 OCR。
+# 仅在另一个 Agent 已实测支持图片后，才主动启用：
+# $env:AGENT_STACK_VISION_MODE = "vision"
 npm install
 npm run monitor
 ```

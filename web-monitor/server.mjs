@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AgentStackFlowCoordinator } from "../bridge/agent-stack-flow-coordinator.mjs";
+import { extractLocalText } from "../bridge/local-ocr.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(here);
@@ -29,12 +30,12 @@ function json(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
-async function readJson(request) {
+async function readJson(request, maxBytes = 64 * 1024) {
   const chunks = [];
   let bytes = 0;
   for await (const chunk of request) {
     bytes += chunk.length;
-    if (bytes > 64 * 1024) throw new Error("Request body is too large");
+    if (bytes > maxBytes) throw new Error("Request body is too large");
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
@@ -64,7 +65,11 @@ async function serveFile(response, root, relative) {
   }
 }
 
-export function createMonitorServer({ coordinatorFactory } = {}) {
+export function createMonitorServer({
+  coordinatorFactory,
+  ocrExtractor = extractLocalText,
+  visionMode = process.env.AGENT_STACK_VISION_MODE,
+} = {}) {
   const makeCoordinator = coordinatorFactory ?? (() => AgentStackFlowCoordinator.fromEnvironment());
 
   return createServer(async (request, response) => {
@@ -104,6 +109,9 @@ export function createMonitorServer({ coordinatorFactory } = {}) {
           coordinator,
           taskContract: started.task_contract,
           createdAt: Date.now(),
+          // Privacy-first default: keep pixels local. Direct image upload is an
+          // explicit opt-in for a separately verified vision-capable Agent.
+          visionModelUnsupported: visionMode !== "vision",
         });
         return json(response, 201, {
           local_session_id: localSessionId,
@@ -151,6 +159,77 @@ export function createMonitorServer({ coordinatorFactory } = {}) {
         });
         return json(response, 201, {
           result,
+          trace: active.coordinator.trace,
+        });
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/context/visual") {
+        const body = await readJson(request, 1024 * 1024);
+        const active = sessions.get(body.local_session_id);
+        if (!active) return json(response, 404, { error: "monitor session not found" });
+        if (active.taskContract.status !== "ready") {
+          return json(response, 409, { error: "task must be ready before visual classification" });
+        }
+        if (!['screen_share', 'camera_page'].includes(body.source)) {
+          return json(response, 400, { error: "visual source must be screen_share or camera_page" });
+        }
+        const match = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(body.image_data_url ?? "");
+        if (!match) return json(response, 400, { error: "a JPEG data URL is required" });
+        const imageBytes = Buffer.from(match[1], "base64");
+        if (!imageBytes.length || imageBytes.length > 700 * 1024) {
+          return json(response, 413, { error: "visual snapshot must be between 1 byte and 700 KiB" });
+        }
+        const observation = {
+          source: body.source,
+          captured_at: new Date().toISOString(),
+          screen_change_score: Number(body.screen_change_score ?? 0),
+        };
+        let result;
+        let processingMode = "agent_stack_vision";
+        let ocr = null;
+        if (!active.visionModelUnsupported) {
+          try {
+            result = await active.coordinator.classifyVisualContext(
+              {
+                local_session_id: body.local_session_id,
+                task_contract: active.taskContract,
+                observation,
+              },
+              imageBytes,
+              { originalName: `refocus-${body.source}-${Date.now()}.jpg`, contentType: "image/jpeg" },
+            );
+          } catch (error) {
+            if (!/vision_model_unsupported/i.test(safeMessage(error))) throw error;
+            active.visionModelUnsupported = true;
+          }
+        }
+        if (!result) {
+          processingMode = "local_ocr_then_agent_stack";
+          ocr = await ocrExtractor(imageBytes);
+          result = await active.coordinator.classifyContext({
+            local_session_id: body.local_session_id,
+            task_contract: active.taskContract,
+            observation: {
+              active_app: body.source === "screen_share" ? "共享屏幕 OCR" : "摄像头页面 OCR",
+              window_title: null,
+              domain: null,
+              screen_shared: body.source === "screen_share",
+              screen_change_score: observation.screen_change_score,
+              visual_source: body.source,
+              ocr_text: ocr.text || null,
+              ocr_confidence: ocr.confidence,
+            },
+          });
+        }
+        return json(response, 201, {
+          result,
+          processing: {
+            mode: processingMode,
+            raw_image_uploaded_to_agent_stack: processingMode === "agent_stack_vision",
+            continuous_video_uploaded: false,
+            ocr_characters: ocr?.text.length ?? null,
+            ocr_confidence: ocr?.confidence ?? null,
+          },
           trace: active.coordinator.trace,
         });
       }

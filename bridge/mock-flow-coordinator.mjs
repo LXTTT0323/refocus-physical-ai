@@ -63,6 +63,18 @@ export class MockFlowCoordinator {
     };
   }
 
+  async classifyVisualContext(input, imageBytes) {
+    this.calls.push({ operation: "classifyVisualContext", input, byteLength: imageBytes.length });
+    return {
+      schema_version: "1.0",
+      skill: "context-relevance",
+      classification: "relevant",
+      confidence: 0.9,
+      evidence: [`Mock visual observation from ${input.observation.source}`],
+      matched_hints: { keywords: [], apps: [], domains: [] },
+    };
+  }
+
   async createCheckpoint(input) {
     this.calls.push({ operation: "createCheckpoint", input });
     const lastProgress = input.recent_progress.at(-1) ?? "尚未记录明确进展";

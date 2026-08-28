@@ -1,6 +1,6 @@
 # VentureD AI Hardware Hackathon 项目库
 
-> 状态：RE:FOCUS 方案已锁定；本地网页监测器已连接真实 `flow-coordinator`；任务合同与页面相关性 Turn 已验收；三个产品 Skill v1 已完成本地合同验证、尚未线上安装
+> 状态：RE:FOCUS 方案已锁定；本地网页监测器已连接真实 `flow-coordinator`；屏幕/摄像头页面统一输入与本地 OCR 降级已验收；三个产品 Skill v1 已完成本地合同验证、尚未线上安装
 > 最后核对：2026-08-28（Asia/Shanghai）  
 > 目标：用一套可重复演示的 Physical AI 闭环参赛，并让所有产品、技术和交付决策服从同一套官方标准。
 
@@ -166,7 +166,7 @@ M5Stack CoreS3 ←USB JSONL→ TypeScript Bridge ←HTTP/NDJSON→ Agent Stack
 必须守住的产品边界：
 
 - 核心价值是“中断恢复”，不是监控员工或简单番茄钟。
-- 屏幕与摄像头尽量本地处理，只上传结构化事件；清楚展示隐私模式。
+- 屏幕与摄像头默认本地处理；当前仅上传 OCR 文字和结构化事件，不上传连续视频。直接图片输入必须显式开启并先验证模型能力。
 - 不做医疗诊断，不宣称治疗 ADHD 或疲劳。
 - 第一版只识别在席、离席、当前应用/页面相关性，并完成一次 Checkpoint 恢复。
 
@@ -212,6 +212,8 @@ Agent 云端从账号到硬件协议的逐步验收见 [Agent Stack 十步运行
 模糊任务追问、具体任务合同和相关线索白名单的最新实测见 [任务检测与理解真人验收](evidence/task-understanding-live-check-2026-08-28.md)。
 
 相关任务窗口与无关窗口的正反例实测见 [屏幕上下文与任务相关性真人验收](evidence/screen-context-live-check-2026-08-28.md)。
+
+屏幕/摄像头页面统一输入、当前模型的视觉限制和本地 OCR 真实 Turn 证据见 [视觉来源与 OCR 降级验收](evidence/visual-source-live-check-2026-08-28.md)。
 
 详见 [产品方向与评奖分析](docs/product-direction.md) 和 [技术实施基线](docs/technical-plan.md)。
 

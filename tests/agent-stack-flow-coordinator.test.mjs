@@ -289,6 +289,34 @@ test("context relevance is a strict succeeded Turn and cannot contain hardware c
   assert.equal(coordinator.trace.at(-1).assistantMessageObserved, true);
 });
 
+test("context relevance deterministically caps extra evidence candidates", async () => {
+  const responses = [
+    new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }),
+    successfulTurn(taskContract(), "1"),
+    successfulTurn(contextContract({ evidence: ["一", "二", "三", "四"] }), "2"),
+  ];
+  const coordinator = new AgentStackFlowCoordinator({
+    baseUrl: "https://example.invalid",
+    apiKey: "test-secret",
+    projectId: "proj_test",
+    agentId: "agent_test",
+    fetchImpl: async () => responses.shift(),
+  });
+  const started = await coordinator.startSession({
+    local_session_id: "local_test",
+    goal: "完成 RE:FOCUS 路演 PPT",
+    focus_minutes: 30,
+  });
+  const result = await coordinator.classifyContext({
+    task_contract: started.task_contract,
+    observation: {},
+  });
+  assert.deepEqual(result.evidence, ["一", "二", "三"]);
+});
+
 test("context relevance rejects extra reminder or hardware fields", async () => {
   const responses = [
     new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
@@ -318,4 +346,53 @@ test("context relevance rejects extra reminder or hardware fields", async () => 
     }),
     /missing or unsupported fields/,
   );
+});
+
+test("visual context uploads one JPEG and attaches its ready userFileId to the Turn", async () => {
+  const responses = [
+    new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }),
+    successfulTurn(taskContract(), "1"),
+    new Response(JSON.stringify({
+      upload: {
+        uploadId: "upl_test",
+        mode: "agent9",
+        expectedChecksumVerification: "whole",
+        contentUrl: "/api/user-files/uploads/upl_test/content",
+        expiresAt: "2026-08-28T01:00:00.000Z",
+        file: { userFileId: "file_test", status: "uploading" },
+      },
+    }), { status: 201, headers: { "Content-Type": "application/json" } }),
+    new Response(JSON.stringify({
+      file: { userFileId: "file_test", status: "ready", checksumVerification: "whole" },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }),
+    successfulTurn(contextContract(), "2"),
+  ];
+  const requests = [];
+  const coordinator = new AgentStackFlowCoordinator({
+    baseUrl: "https://example.invalid",
+    apiKey: "test-secret",
+    projectId: "proj_test",
+    agentId: "agent_test",
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      return responses.shift();
+    },
+  });
+  const started = await coordinator.startSession({
+    local_session_id: "local_test",
+    goal: "完成 PPT",
+    focus_minutes: 30,
+  });
+  const result = await coordinator.classifyVisualContext(
+    { task_contract: started.task_contract, observation: { source: "screen_share" } },
+    Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+  );
+  assert.equal(result.classification, "relevant");
+  assert.equal(requests.length, 5);
+  const visualTurnBody = JSON.parse(requests.at(-1).options.body);
+  assert.deepEqual(visualTurnBody.input.userFileIds, ["file_test"]);
+  assert.match(requests[3].options.headers["Content-Digest"], /^sha-256=:[A-Za-z0-9+/]+=*:$/);
 });

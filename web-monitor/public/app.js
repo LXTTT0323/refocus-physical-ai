@@ -11,6 +11,9 @@ const elements = {
   cameraTest: $("#cameraTestButton"),
   clarify: $("#clarifyButton"),
   classify: $("#classifyButton"),
+  visualClassify: $("#visualClassifyButton"),
+  visualSource: $("#visualSource"),
+  visualResult: $("#visualResult"),
   clarificationCard: $("#clarificationCard"),
   clarificationQuestion: $("#clarificationQuestion"),
   clarificationAnswer: $("#clarificationAnswer"),
@@ -76,6 +79,9 @@ const state = {
   contextClassification: "unknown",
   readySince: 0,
   events: [],
+  autoVisual: false,
+  visualTimer: null,
+  visualInFlight: false,
 };
 
 function setConnection(name, text, kind = "") {
@@ -363,6 +369,7 @@ function renderTaskContract() {
   const ready = state.taskContract?.status === "ready";
   setConnection("task", ready ? "ready" : "需要补充", ready ? "ok" : "warn");
   elements.classify.disabled = !ready;
+  elements.visualClassify.disabled = !ready;
   elements.clarificationCard.classList.toggle("hidden", ready);
   if (!ready) elements.clarificationQuestion.textContent = state.taskContract?.clarification_question ?? "请补充任务";
   elements.taskContractCard.classList.remove("hidden");
@@ -473,8 +480,9 @@ async function startMonitoring() {
   } catch (error) {
     elements.start.disabled = false;
     elements.start.textContent = "重新开始";
-    setConnection("camera", "授权未完成", "bad");
-    setConnection("screen", "授权未完成", "bad");
+    if (!state.cameraStream) setConnection("camera", "授权未完成", "bad");
+    if (!state.screenStream) setConnection("screen", "授权未完成", "bad");
+    if (state.cameraStream && state.screenStream) setConnection("agent", "Agent 会话失败", "bad");
     addEvent("START_ERROR", { message: error.message });
   }
 }
@@ -556,9 +564,78 @@ async function classifyContext() {
   }
 }
 
+function captureVisualSnapshot(source) {
+  const video = source === "screen_share" ? elements.screenVideo : elements.cameraVideo;
+  const available = source === "screen_share" ? state.screenShared : Boolean(state.cameraStream);
+  if (!available || video.readyState < 2) {
+    throw new Error(source === "screen_share" ? "请先共享屏幕" : "请先开启摄像头并让页面进入画面");
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = 480;
+  canvas.height = 270;
+  const context = canvas.getContext("2d");
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.58);
+}
+
+async function runVisualClassification() {
+  if (!state.autoVisual || state.visualInFlight) return;
+  state.visualInFlight = true;
+  const source = elements.visualSource.value;
+  elements.visualResult.className = "classification-result";
+  elements.visualResult.textContent = "正在截取单张画面并由 flow-coordinator 判断…";
+  try {
+    const response = await api("/api/context/visual", {
+      local_session_id: state.localSessionId,
+      source,
+      image_data_url: captureVisualSnapshot(source),
+      screen_change_score: state.screenChangeScore,
+    });
+    const result = response.result;
+    state.contextClassification = result.classification;
+    elements.visualResult.className = `classification-result ${result.classification}`;
+    const modeLabel = response.processing?.mode === "local_ocr_then_agent_stack"
+      ? `本地 OCR → Agent（识别 ${response.processing.ocr_characters ?? 0} 字）`
+      : "Agent 直接看图";
+    elements.visualResult.textContent = `${result.classification.toUpperCase()} · ${(result.confidence * 100).toFixed(0)}% · ${modeLabel} · ${result.evidence.join("；")}`;
+    addEvent("VISUAL_CONTEXT_CLASSIFIED", {
+      source,
+      classification: result.classification,
+      processing_mode: response.processing?.mode,
+      raw_image_uploaded_to_agent_stack: response.processing?.raw_image_uploaded_to_agent_stack,
+      status: response.trace.at(-1)?.status,
+      assistant_message: response.trace.at(-1)?.assistantMessageObserved,
+      continuous_video_uploaded: false,
+    });
+    updateReadyGate();
+  } catch (error) {
+    elements.visualResult.className = "classification-result unrelated";
+    elements.visualResult.textContent = `视觉判断失败：${error.message}`;
+    addEvent("VISUAL_CONTEXT_ERROR", { source, message: error.message });
+  } finally {
+    state.visualInFlight = false;
+    if (state.autoVisual) state.visualTimer = setTimeout(runVisualClassification, 30_000);
+  }
+}
+
+function toggleVisualClassification() {
+  state.autoVisual = !state.autoVisual;
+  if (state.autoVisual) {
+    elements.visualClassify.textContent = "停止自动视觉判断";
+    elements.visualSource.disabled = true;
+    runVisualClassification();
+  } else {
+    clearTimeout(state.visualTimer);
+    elements.visualClassify.textContent = "开启自动视觉判断";
+    elements.visualSource.disabled = false;
+    elements.visualResult.textContent = "视觉判断已停止";
+  }
+}
+
 elements.start.addEventListener("click", startMonitoring);
 elements.taskTest.addEventListener("click", testTaskUnderstanding);
 elements.cameraTest.addEventListener("click", startCameraTest);
 elements.clarify.addEventListener("click", clarifyTask);
 elements.classify.addEventListener("click", classifyContext);
+elements.visualClassify.addEventListener("click", toggleVisualClassification);
 loadFaceModel();
