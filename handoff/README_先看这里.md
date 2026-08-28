@@ -22,6 +22,7 @@
 1. 保持 C 板 USB 数据线连接。
 2. 双击 `启动桥接.command`。首次运行会创建独立环境并安装 pyserial。
 3. 桥接会自动检测 `/dev/cu.usbmodem*` 或 Espressif 串口，不需要填写端口号。
+   连接成功后每 5 秒发送一次心跳，网页会显示“桥接在线”。
 4. 打开 `https://refocus-physical-ai.vercel.app/?hardware=1`。
 5. 网页点击一次“开始检测”，授权摄像头和“整个屏幕”。
 6. 网页显示“备用：网页开始 Session”后，按第一次实体按钮。

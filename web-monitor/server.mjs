@@ -188,6 +188,18 @@ export function createMonitorHandler({
         return json(response, 202, { accepted: true, command });
       }
 
+      if (request.method === "POST" && url.pathname === "/api/hardware/status") {
+        const body = await readJson(request);
+        if (typeof body.connected !== "boolean") {
+          return json(response, 400, { error: "connected must be boolean" });
+        }
+        const event = enqueueHardwareEvent(
+          body.connected ? "HARDWARE_CONNECTED" : "HARDWARE_DISCONNECTED",
+          { port: typeof body.port === "string" ? body.port : null },
+        );
+        return json(response, 202, { accepted: true, event });
+      }
+
       if (request.method === "POST" && url.pathname === "/api/hardware/session-state") {
         const body = await readJson(request);
         if (typeof body.active !== "boolean") {

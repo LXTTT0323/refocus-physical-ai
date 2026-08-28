@@ -1045,6 +1045,13 @@ async function pollHardwareEvents() {
     const response = await api(`/api/hardware/events?after=${state.hardwareEventId}`);
     for (const event of response.events) {
       state.hardwareEventId = Math.max(state.hardwareEventId, event.id);
+      if (event.type === "HARDWARE_CONNECTED") {
+        const port = event.payload.port ? ` · ${event.payload.port}` : "";
+        setConnection("hardware", `桥接在线${port}`, "ok");
+      }
+      if (event.type === "HARDWARE_DISCONNECTED") {
+        setConnection("hardware", "桥接在线 · 板子已断开", "bad");
+      }
       if (event.type === "SESSION_START_REQUESTED") {
         setConnection("hardware", "桥接在线 · 收到开始", "ok");
         await activateHardwareSession(event.payload.trigger);

@@ -72,6 +72,17 @@ test("monitor serves the local UI and keeps Agent Stack secrets server-side", as
     assert.equal(ledCommands.commands[0].type, "LED_SET");
     assert.equal(ledCommands.commands[0].payload.on, true);
 
+    const statusResponse = await fetch(`${baseUrl}/api/hardware/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connected: true, port: "/dev/cu.usbmodem-test" }),
+    });
+    assert.equal(statusResponse.status, 202);
+    const statusEvents = await fetch(
+      `${baseUrl}/api/hardware/events?after=${hardwareEvents.latest_id}`,
+    ).then((item) => item.json());
+    assert.equal(statusEvents.events[0].type, "HARDWARE_CONNECTED");
+
     const stopStartedResponse = await fetch(`${baseUrl}/api/session/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -107,7 +118,7 @@ test("monitor serves the local UI and keeps Agent Stack secrets server-side", as
     });
     assert.equal(reflectionResponse.status, 202);
     const reflectionEvents = await fetch(
-      `${baseUrl}/api/hardware/events?after=${hardwareEvents.latest_id}`,
+      `${baseUrl}/api/hardware/events?after=${statusEvents.latest_id}`,
     ).then((item) => item.json());
     assert.equal(reflectionEvents.events[0].type, "REFLECTION_TRANSCRIPT");
     assert.equal(reflectionEvents.events[0].payload.source, "board_microphone");

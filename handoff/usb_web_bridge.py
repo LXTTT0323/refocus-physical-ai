@@ -43,6 +43,15 @@ def get_led_commands(base_url: str, after: int) -> list[dict]:
     return body.get("commands", [])
 
 
+def post_hardware_status(base_url: str, connected: bool, port: str) -> None:
+    status, _ = request_json(base_url, "POST", "/api/hardware/status", {
+        "connected": connected,
+        "port": port,
+    })
+    if status != 202:
+        raise RuntimeError(f"hardware status returned HTTP {status}")
+
+
 def resolve_port(requested: str) -> str:
     if requested != "auto":
         return requested
@@ -74,6 +83,7 @@ def run(requested_port: str, baud: int, base_url: str) -> None:
             port = resolve_port(requested_port)
             with serial.Serial(port, baudrate=baud, timeout=0.5) as connection:
                 next_command_poll = 0.0
+                next_status_heartbeat = 0.0
                 while True:
                     raw = connection.readline()
                     if raw:
@@ -99,6 +109,12 @@ def run(requested_port: str, baud: int, base_url: str) -> None:
                                         print(f"WEB_FORWARD_OK active={str(active).lower()} seq={sequence}", flush=True)
 
                     now = time.monotonic()
+                    if now >= next_status_heartbeat:
+                        try:
+                            post_hardware_status(base_url, True, port)
+                        except (OSError, http.client.HTTPException, RuntimeError) as error:
+                            print(f"STATUS_HEARTBEAT_FAILED error={error}", flush=True)
+                        next_status_heartbeat = now + 5.0
                     if now < next_command_poll:
                         continue
                     next_command_poll = now + 0.5
