@@ -58,6 +58,13 @@ test("cross-validates one unrelated result with eight seconds of head deviation"
   assert.equal(policy.evaluate({ ...healthy, headDirection: "right", headAwaySeconds: 8 }, 12_000).light, "red");
 });
 
+test("turns red after seven seconds of sustained head deviation", () => {
+  const policy = new FocusSignalPolicy();
+  enterGreen(policy);
+  assert.equal(policy.evaluate({ ...healthy, headDirection: "left", headAwaySeconds: 6.9 }, 12_000).light, "green");
+  assert.equal(policy.evaluate({ ...healthy, headDirection: "left", headAwaySeconds: 7 }, 12_100).light, "red");
+});
+
 test("recovers only after person and relevant context remain stable for three seconds", () => {
   const policy = new FocusSignalPolicy();
   enterGreen(policy);
