@@ -28,7 +28,11 @@ test("bridge completes the simulated RE:FOCUS loop", async () => {
   assert.ok(bridge.effects.some(({ type }) => type === "CHECKPOINT_READY"));
   assert.ok(bridge.effects.some(({ type }) => type === "RESTORE_READY"));
   assert.ok(bridge.effects.some(({ type }) => type === "SUMMARY_READY"));
-  assert.ok(bridge.effects.some(({ type }) => type === "REFLECTION_REQUIRED"));
+  const reflection = bridge.effects.find(({ type }) => type === "REFLECTION_REQUIRED");
+  assert.deepEqual(
+    reflection.questions.map(({ text }) => text),
+    ["这次完成了什么？", "刚才专注感受怎么样？"],
+  );
 });
 
 test("activity samples and progress updates never call the coordinator directly", async () => {

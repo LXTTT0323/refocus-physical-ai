@@ -168,8 +168,8 @@ export class RefocusBridge {
         effects.push({
           type: "REFLECTION_REQUIRED",
           questions: [
-            { id: "completion_report", text: "这次完成了什么？任务完成到什么程度？" },
-            { id: "focus_experience", text: "刚才的专注感受怎么样？最顺或最卡的地方是什么？" },
+            { id: "completion_report", text: "这次完成了什么？" },
+            { id: "focus_experience", text: "刚才专注感受怎么样？" },
           ],
           input_source: "microphone",
         });
