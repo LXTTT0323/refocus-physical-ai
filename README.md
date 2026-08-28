@@ -1,6 +1,6 @@
 # VentureD AI Hardware Hackathon 项目库
 
-> 状态：RE:FOCUS 方案已锁定；Desktop Bridge × `flow-coordinator` 真实闭环与任务澄清已验收；C 板 V2 固件已进入队友真机验证；产品 Skill 暂停设计  
+> 状态：RE:FOCUS 方案已锁定；Desktop Bridge × `flow-coordinator` 真实闭环与任务澄清已验收；C 板 V2 固件已进入队友真机验证；产品 Skill 暂停设计
 > 最后核对：2026-08-28（Asia/Shanghai）  
 > 目标：用一套可重复演示的 Physical AI 闭环参赛，并让所有产品、技术和交付决策服从同一套官方标准。
 
