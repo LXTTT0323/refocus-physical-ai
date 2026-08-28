@@ -37,9 +37,9 @@
         </div>
         <div class="launch-actions">
           <button id="hardwareConnectButton" class="secondary">连接 C 板</button>
-          <button id="startButton" class="primary start-session-button">开始专注并授权</button>
+          <button id="startButton" class="primary start-session-button">准备检测并授权</button>
         </div>
-        <p class="permission-note">点击后会亮灯并依次请求摄像头、屏幕共享权限。共享时请选择“整个屏幕”。</p>
+        <p class="permission-note">先点击一次完成摄像头与屏幕共享授权；页面显示“准备完成”后，按实体按钮才会开始计时和监测。共享时请选择“整个屏幕”。</p>
         <details class="advanced-tools">
           <summary>开发测试工具</summary>
           <div>
@@ -51,7 +51,7 @@
 
       <section id="runningBar" class="running-bar hidden">
         <div><p class="eyebrow">SESSION RUNNING</p><h2>正在专注：<span id="runningGoal">—</span></h2></div>
-        <div class="running-indicator"><i></i><span>灯已亮 · 监测运行中</span></div>
+        <div class="running-indicator"><i></i><span>灯已亮 · <b id="runningElapsed">00:00</b></span></div>
         <button id="endButton" class="danger">结束本次专注</button>
       </section>
 

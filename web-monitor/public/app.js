@@ -18,6 +18,7 @@ const elements = {
   startView: $("#startView"),
   runningBar: $("#runningBar"),
   runningGoal: $("#runningGoal"),
+  runningElapsed: $("#runningElapsed"),
   runtimeView: $("#runtimeView"),
   start: $("#startButton"),
   hardwareConnect: $("#hardwareConnectButton"),
@@ -171,6 +172,13 @@ function setConnection(name, text, kind = "") {
   node.querySelector("b").textContent = text;
 }
 
+function updateRunningElapsed() {
+  const seconds = Math.max(0, Math.floor((Date.now() - state.sessionStartedAt) / 1000));
+  const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
+  const remainder = (seconds % 60).toString().padStart(2, "0");
+  elements.runningElapsed.textContent = `${minutes}:${remainder}`;
+}
+
 function badge(node, text, kind) {
   node.textContent = text;
   node.className = `state-badge ${kind}`;
@@ -233,10 +241,12 @@ function handleHardwareFrame(frame) {
     if (Number.isInteger(frame.seq)) state.hardwareSequence = frame.seq;
     const previous = state.hardwareSessionActive;
     state.hardwareSessionActive = frame.value;
-    setConnection("hardware", frame.value ? "已连接 · 摇杆前位" : "已连接 · 摇杆原位", frame.value ? "warn" : "ok");
+    setConnection("hardware", frame.value ? "已连接 · 按钮已开始" : "已连接 · 待机", frame.value ? "warn" : "ok");
     addEvent("HARDWARE_SESSION_STATE", { active: frame.value, seq: frame.seq ?? null });
-    if (frame.value && !state.running) {
-      addEvent("HARDWARE_START_REQUESTED", { action: "请点击开始完整监测以完成摄像头和整屏授权" });
+    if (frame.value && state.hardwarePrepared && !state.running) {
+      void activateHardwareSession("physical_button");
+    } else if (frame.value && !state.hardwarePrepared) {
+      addEvent("HARDWARE_START_REQUESTED", { action: "请先点击准备检测并完成摄像头和整屏授权" });
     }
     if (previous === true && frame.value === false && state.running && state.localSessionId) {
       openFeedback("joystick_returned_to_origin");
@@ -679,9 +689,10 @@ async function setHardwareLed(on, stateName) {
 }
 
 async function activateHardwareSession(trigger = "physical_button") {
-  if (!state.hardwarePrepared || !state.localSessionId || state.hardwareSessionActive) return;
+  if (!state.hardwarePrepared || !state.localSessionId || state.phase === "running") return;
   state.hardwareSessionActive = true;
   state.sessionStartedAt = Date.now();
+  state.running = true;
   elements.start.disabled = true;
   elements.start.textContent = "正在专注";
   elements.runningGoal.textContent = elements.goal.value.trim();
@@ -689,6 +700,12 @@ async function activateHardwareSession(trigger = "physical_button") {
   await setHardwareLed(true, "session_active");
   addEvent("SESSION_STARTED", { trigger });
   setSessionPhase("running");
+  updateRunningElapsed();
+  requestAnimationFrame(faceLoop);
+  rememberTimer(setInterval(analyzeScreen, 1000));
+  rememberTimer(setInterval(emitSample, 5000));
+  rememberTimer(setInterval(updateReadyGate, 500));
+  rememberTimer(setInterval(updateRunningElapsed, 1000));
   if (!state.autoVisual && state.taskContract?.status === "ready") toggleVisualClassification();
   updateReadyGate();
 }
@@ -709,6 +726,10 @@ async function handleStartClick() {
     return;
   }
   elements.goal.removeAttribute("aria-invalid");
+  if (hardwareMode && state.hardwarePrepared && !state.hardwareSessionActive) {
+    await activateHardwareSession("web_fallback");
+    return;
+  }
   await startMonitoring();
 }
 
@@ -755,9 +776,7 @@ async function startMonitoring() {
   elements.start.disabled = true;
   elements.start.textContent = "正在授权…";
   try {
-    await setHardwareLed(true, "starting");
     if (demoMode) {
-      state.running = true;
       state.screenShared = true;
       state.present = true;
       state.lastFaceAt = performance.now();
@@ -777,11 +796,15 @@ async function startMonitoring() {
       elements.change.textContent = "8.0%";
       elements.stable.textContent = "0 秒";
       await startAgentSession();
-      updateReadyGate();
-      rememberTimer(setInterval(emitSample, 5000));
-      rememberTimer(setInterval(updateReadyGate, 500));
       state.hardwarePrepared = true;
-      await activateHardwareSession("web_start");
+      if (hardwareMode) {
+        elements.start.disabled = false;
+        elements.start.textContent = "备用：网页开始 Session";
+        setConnection("hardware", "准备完成 · 等待实体按钮", "warn");
+        await setHardwareLed(false, "prepared");
+      } else {
+        await activateHardwareSession("web_start");
+      }
       return;
     }
 
@@ -834,18 +857,20 @@ async function startMonitoring() {
     });
     await loadFaceModel();
     await startAgentSession();
-    state.running = true;
-    requestAnimationFrame(faceLoop);
-    rememberTimer(setInterval(analyzeScreen, 1000));
-    rememberTimer(setInterval(emitSample, 5000));
-    rememberTimer(setInterval(updateReadyGate, 500));
-    addEvent("MONITORING_STARTED", {
+    addEvent("MONITORING_PREPARED", {
       camera: true,
       screen: true,
       display_surface: displaySurface || "monitor_requested",
     });
     state.hardwarePrepared = true;
-    await activateHardwareSession("web_start");
+    if (hardwareMode) {
+      elements.start.disabled = false;
+      elements.start.textContent = "备用：网页开始 Session";
+      setConnection("hardware", "准备完成 · 等待实体按钮", "warn");
+      await setHardwareLed(false, "prepared");
+    } else {
+      await activateHardwareSession("web_start");
+    }
   } catch (error) {
     await setHardwareLed(false, "start_failed");
     elements.start.disabled = false;
