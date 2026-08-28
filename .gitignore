@@ -1,0 +1,20 @@
+.env
+.env.*
+!.env.example
+build/
+.pio/
+node_modules/
+dist/
+coverage/
+*.log
+*.wav
+*.mp3
+*.mp4
+*.mov
+secrets/
+credentials/
+
+# Local teammate bundles duplicate the tracked Agent_link submodule.
+handoff/*.zip
+handoff/refocus-c-v1-for-teammate/
+handoff/refocus-c-v2-usb-bridge/

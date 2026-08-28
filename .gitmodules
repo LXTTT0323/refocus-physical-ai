@@ -1,0 +1,9 @@
+[submodule "external/agent-link"]
+	path = external/agent-link
+	url = https://github.com/LXTTT0323/Agent_link.git
+[submodule ".agents/skills/agent-stack-developer"]
+	path = .agents/skills/agent-stack-developer
+	url = https://github.com/mem9-ai/agent-stack-dev-guide.git
+[submodule "external/esp32-agent-lcd"]
+	path = external/esp32-agent-lcd
+	url = https://github.com/you06/esp32-agent-lcd.git

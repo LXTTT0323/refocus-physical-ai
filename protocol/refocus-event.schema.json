@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://refocus.local/schemas/event-v0.1.json",
+  "title": "RE:FOCUS event v0.1",
+  "oneOf": [
+    { "$ref": "#/$defs/sessionStart" },
+    { "$ref": "#/$defs/activitySample" },
+    { "$ref": "#/$defs/progressUpdate" },
+    { "$ref": "#/$defs/interruptionDetected" },
+    { "$ref": "#/$defs/returnDetected" },
+    { "$ref": "#/$defs/sessionResumed" },
+    { "$ref": "#/$defs/sessionEnd" }
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "event_id",
+        "session_id",
+        "sequence",
+        "timestamp",
+        "source",
+        "event",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": { "const": "0.1" },
+        "event_id": { "type": "string", "pattern": "^evt_[a-zA-Z0-9_-]{8,64}$" },
+        "session_id": { "type": "string", "pattern": "^local_[a-zA-Z0-9_-]{8,64}$" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "source": {
+          "enum": ["user", "desktop_observer", "state_machine", "agent_stack", "hardware"]
+        },
+        "event": { "type": "string" },
+        "payload": { "type": "object" }
+      }
+    },
+    "sessionStart": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "properties": {
+            "event": { "const": "SESSION_START" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["goal", "focus_minutes"],
+              "properties": {
+                "goal": { "type": "string", "minLength": 1, "maxLength": 500 },
+                "focus_minutes": { "type": ["integer", "null"], "minimum": 1, "maximum": 480 }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "activitySample": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "properties": {
+            "event": { "const": "ACTIVITY_SAMPLE" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["presence", "camera", "computer"],
+              "properties": {
+                "presence": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["present", "missing_seconds"],
+                  "properties": {
+                    "present": { "type": "boolean" },
+                    "missing_seconds": { "type": "number", "minimum": 0 }
+                  }
+                },
+                "camera": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["head_direction", "eye_state", "yawn_detected"],
+                  "properties": {
+                    "head_direction": { "enum": ["toward_screen", "away", "unknown"] },
+                    "eye_state": { "enum": ["open", "closed", "unknown"] },
+                    "yawn_detected": { "type": "boolean" }
+                  }
+                },
+                "computer": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "active_app",
+                    "window_title",
+                    "keyboard_events_10s",
+                    "mouse_events_10s",
+                    "idle_seconds"
+                  ],
+                  "properties": {
+                    "active_app": { "type": ["string", "null"], "maxLength": 160 },
+                    "window_title": { "type": ["string", "null"], "maxLength": 500 },
+                    "keyboard_events_10s": { "type": "integer", "minimum": 0 },
+                    "mouse_events_10s": { "type": "integer", "minimum": 0 },
+                    "idle_seconds": { "type": "number", "minimum": 0 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "progressUpdate": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "properties": {
+            "event": { "const": "PROGRESS_UPDATE" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["progress_type", "description"],
+              "properties": {
+                "progress_type": {
+                  "enum": ["document_changed", "file_saved", "test_passed", "step_completed", "manual"]
+                },
+                "description": { "type": "string", "minLength": 1, "maxLength": 500 }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "interruptionDetected": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "properties": {
+            "event": { "const": "INTERRUPTION_DETECTED" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["reason", "duration_seconds"],
+              "properties": {
+                "reason": { "enum": ["absent", "off_task", "idle"] },
+                "duration_seconds": { "type": "number", "minimum": 0 }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "returnDetected": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "properties": {
+            "event": { "const": "RETURN_DETECTED" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["present", "active_app", "window_title", "stable_seconds"],
+              "properties": {
+                "present": { "const": true },
+                "active_app": { "type": ["string", "null"], "maxLength": 160 },
+                "window_title": { "type": ["string", "null"], "maxLength": 500 },
+                "stable_seconds": { "type": "number", "minimum": 0 }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "sessionResumed": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "properties": {
+            "event": { "const": "SESSION_RESUMED" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["restore_message"],
+              "properties": {
+                "restore_message": { "type": "string", "minLength": 1, "maxLength": 1000 }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "sessionEnd": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "properties": {
+            "event": { "const": "SESSION_END" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["reason"],
+              "properties": {
+                "reason": { "enum": ["user_finished", "user_cancelled"] }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

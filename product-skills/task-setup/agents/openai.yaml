@@ -1,0 +1,4 @@
+interface:
+  display_name: "Task Setup"
+  short_description: "Normalize a focus goal into a testable task contract"
+  default_prompt: "Use $task-setup to turn my focus goal into a structured task contract."
