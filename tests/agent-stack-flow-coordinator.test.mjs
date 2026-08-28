@@ -41,13 +41,33 @@ function successfulTurn(text, suffix = "1") {
   ]);
 }
 
+function taskContract(overrides = {}) {
+  return JSON.stringify({
+    schema_version: "1.0",
+    skill: "task-setup",
+    status: "ready",
+    goal: "完成 PPT 前三页",
+    deliverable: "一份包含前三页的路演 PPT",
+    success_criteria: ["前三页均有标题和正文"],
+    focus_minutes: 30,
+    relevance_hints: {
+      keywords: ["RE:FOCUS"],
+      apps: ["PowerPoint"],
+      domains: [],
+    },
+    clarification_question: null,
+    confidence: 0.92,
+    ...overrides,
+  });
+}
+
 test("real coordinator adapter creates one Session and parses NDJSON Turns", async () => {
   const responses = [
     new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
       status: 201,
       headers: { "Content-Type": "application/json" },
     }),
-    successfulTurn('{"understood_goal":"完成 PPT"}', "1"),
+    successfulTurn(taskContract(), "1"),
     successfulTurn(
       '{"last_progress":"已完成结构","next_action":"补充痛点","status_line":"进度已保存"}',
       "2",
@@ -81,12 +101,52 @@ test("real coordinator adapter creates one Session and parses NDJSON Turns", asy
   const summary = await coordinator.endSession({ end_reason: "user_finished" });
 
   assert.equal(started.coordinator_session_id, "sess_test");
+  assert.equal(started.task_contract.status, "ready");
   assert.equal(checkpoint.next_action, "补充痛点");
   assert.equal(restore.restore_message, "刚完成结构，继续补充痛点。");
   assert.equal(summary.completed, true);
   assert.equal(requests.length, 5);
   assert.equal(coordinator.trace.length, 4);
   assert.ok(coordinator.trace.every(({ status }) => status === "succeeded"));
+});
+
+test("task setup can request and consume one clarification in the same Session", async () => {
+  const responses = [
+    new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }),
+    successfulTurn(taskContract({
+      status: "needs_clarification",
+      goal: null,
+      deliverable: null,
+      success_criteria: [],
+      clarification_question: "这次要完成 PPT 的哪几页？",
+      confidence: 0.4,
+    }), "1"),
+    successfulTurn(taskContract(), "2"),
+  ];
+  const coordinator = new AgentStackFlowCoordinator({
+    baseUrl: "https://example.invalid",
+    apiKey: "test-secret",
+    projectId: "proj_test",
+    agentId: "agent_test",
+    fetchImpl: async () => responses.shift(),
+  });
+
+  const started = await coordinator.startSession({
+    local_session_id: "local_test",
+    goal: "做一下 PPT",
+    focus_minutes: 30,
+  });
+  assert.equal(started.task_contract.status, "needs_clarification");
+
+  const clarified = await coordinator.clarifyTask({
+    previous_contract: started.task_contract,
+    answer: "完成路演 PPT 的前三页",
+  });
+  assert.equal(clarified.status, "ready");
+  assert.equal(coordinator.trace.length, 2);
 });
 
 test("adapter rejects non-JSON assistant output", async () => {
@@ -114,4 +174,3 @@ test("adapter rejects non-JSON assistant output", async () => {
     /not strict JSON/,
   );
 });
-

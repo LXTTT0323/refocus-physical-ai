@@ -4,7 +4,9 @@
   "title": "RE:FOCUS event v0.1",
   "oneOf": [
     { "$ref": "#/$defs/sessionStart" },
+    { "$ref": "#/$defs/taskClarification" },
     { "$ref": "#/$defs/activitySample" },
+    { "$ref": "#/$defs/focusReady" },
     { "$ref": "#/$defs/progressUpdate" },
     { "$ref": "#/$defs/interruptionDetected" },
     { "$ref": "#/$defs/returnDetected" },
@@ -104,6 +106,45 @@
                     "idle_seconds": { "type": "number", "minimum": 0 }
                   }
                 }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "taskClarification": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "properties": {
+            "event": { "const": "TASK_CLARIFICATION" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["answer"],
+              "properties": {
+                "answer": { "type": "string", "minLength": 1, "maxLength": 1000 }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "focusReady": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "properties": {
+            "event": { "const": "FOCUS_READY" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["task_ready", "present", "context_relevant", "stable_seconds"],
+              "properties": {
+                "task_ready": { "const": true },
+                "present": { "const": true },
+                "context_relevant": { "const": true },
+                "stable_seconds": { "type": "number", "minimum": 5 }
               }
             }
           }

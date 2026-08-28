@@ -28,15 +28,21 @@ test("happy path reaches ENDED", () => {
   const machine = new RefocusStateMachine();
   for (const item of happyPath) machine.apply(item);
   assert.equal(machine.state, STATES.ENDED);
-  assert.equal(machine.history.length, 7);
+  assert.equal(machine.history.length, 8);
 });
 
 test("an interruption cannot also mean that the user returned", () => {
   const machine = new RefocusStateMachine();
   machine.apply(event(1, "SESSION_START", { goal: "写 PPT", focus_minutes: 30 }));
   machine.apply(event(2, "ACTIVITY_SAMPLE", { sample: true }));
+  machine.apply(event(3, "FOCUS_READY", {
+    task_ready: true,
+    present: true,
+    context_relevant: true,
+    stable_seconds: 5,
+  }));
   machine.apply(
-    event(3, "INTERRUPTION_DETECTED", {
+    event(4, "INTERRUPTION_DETECTED", {
       reason: "absent",
       duration_seconds: 35,
     }),
@@ -45,7 +51,7 @@ test("an interruption cannot also mean that the user returned", () => {
   assert.throws(
     () =>
       machine.apply(
-        event(4, "INTERRUPTION_DETECTED", {
+        event(5, "INTERRUPTION_DETECTED", {
           reason: "absent",
           duration_seconds: 40,
         }),
@@ -58,8 +64,14 @@ test("SESSION_RESUMED requires RETURN_DETECTED first", () => {
   const machine = new RefocusStateMachine();
   machine.apply(event(1, "SESSION_START", { goal: "写 PPT", focus_minutes: 30 }));
   machine.apply(event(2, "ACTIVITY_SAMPLE", { sample: true }));
+  machine.apply(event(3, "FOCUS_READY", {
+    task_ready: true,
+    present: true,
+    context_relevant: true,
+    stable_seconds: 5,
+  }));
   machine.apply(
-    event(3, "INTERRUPTION_DETECTED", {
+    event(4, "INTERRUPTION_DETECTED", {
       reason: "absent",
       duration_seconds: 35,
     }),
@@ -68,7 +80,7 @@ test("SESSION_RESUMED requires RETURN_DETECTED first", () => {
   assert.throws(
     () =>
       machine.apply(
-        event(4, "SESSION_RESUMED", {
+        event(5, "SESSION_RESUMED", {
           restore_message: "继续写第三页",
         }),
       ),
@@ -80,8 +92,14 @@ test("RETURN_DETECTED requires ten stable seconds", () => {
   const machine = new RefocusStateMachine();
   machine.apply(event(1, "SESSION_START", { goal: "写 PPT", focus_minutes: 30 }));
   machine.apply(event(2, "ACTIVITY_SAMPLE", { sample: true }));
+  machine.apply(event(3, "FOCUS_READY", {
+    task_ready: true,
+    present: true,
+    context_relevant: true,
+    stable_seconds: 5,
+  }));
   machine.apply(
-    event(3, "INTERRUPTION_DETECTED", {
+    event(4, "INTERRUPTION_DETECTED", {
       reason: "absent",
       duration_seconds: 35,
     }),
@@ -90,7 +108,7 @@ test("RETURN_DETECTED requires ten stable seconds", () => {
   assert.throws(
     () =>
       machine.apply(
-        event(4, "RETURN_DETECTED", {
+        event(5, "RETURN_DETECTED", {
           present: true,
           stable_seconds: 5,
         }),
@@ -110,3 +128,19 @@ test("duplicate or skipped events are rejected", () => {
   );
 });
 
+test("setup does not focus until the readiness gate passes", () => {
+  const machine = new RefocusStateMachine();
+  machine.apply(event(1, "SESSION_START", { goal: "做一下 PPT", focus_minutes: 30 }));
+  machine.apply(event(2, "ACTIVITY_SAMPLE", { sample: true }));
+  assert.equal(machine.state, STATES.SETUP);
+
+  assert.throws(
+    () => machine.apply(event(3, "FOCUS_READY", {
+      task_ready: true,
+      present: true,
+      context_relevant: false,
+      stable_seconds: 5,
+    })),
+    /requires task_ready, present, and context_relevant/,
+  );
+});

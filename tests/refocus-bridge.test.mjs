@@ -42,3 +42,63 @@ test("activity samples and progress updates never call the coordinator directly"
   assert.equal(coordinator.calls.length, callsAfterStart);
 });
 
+test("bridge keeps setup active until a vague task is clarified", async () => {
+  const calls = [];
+  const coordinator = {
+    async startSession(input) {
+      calls.push("startSession");
+      return {
+        coordinator_session_id: "sess_test",
+        task_contract: {
+          schema_version: "1.0",
+          skill: "task-setup",
+          status: "needs_clarification",
+          goal: null,
+          deliverable: null,
+          success_criteria: [],
+          focus_minutes: input.focus_minutes,
+          relevance_hints: { keywords: [], apps: [], domains: [] },
+          clarification_question: "这次具体要完成什么？",
+          confidence: 0.3,
+        },
+      };
+    },
+    async clarifyTask(input) {
+      calls.push("clarifyTask");
+      return {
+        ...input.previous_contract,
+        status: "ready",
+        goal: input.answer,
+        deliverable: input.answer,
+        success_criteria: ["形成可见成果"],
+        clarification_question: null,
+        confidence: 0.9,
+      };
+    },
+  };
+  const bridge = new RefocusBridge({ coordinator });
+  const start = {
+    ...events[0],
+    payload: { goal: "做一下项目", focus_minutes: 30 },
+  };
+  const clarification = {
+    schema_version: "0.1",
+    event_id: "evt_demo_clarify",
+    session_id: start.session_id,
+    sequence: 2,
+    timestamp: "2026-08-28T10:00:05+08:00",
+    source: "user",
+    event: "TASK_CLARIFICATION",
+    payload: { answer: "完成 RE:FOCUS 路演 PPT 的前三页" },
+  };
+
+  const startEffects = await bridge.process(start);
+  assert.equal(bridge.state, "SETUP");
+  assert.ok(startEffects.some(({ type }) => type === "TASK_CLARIFICATION_REQUIRED"));
+
+  const clarifiedEffects = await bridge.process(clarification);
+  assert.equal(bridge.state, "SETUP");
+  assert.equal(bridge.taskContract.status, "ready");
+  assert.ok(clarifiedEffects.some(({ type }) => type === "TASK_READY"));
+  assert.deepEqual(calls, ["startSession", "clarifyTask"]);
+});

@@ -5,7 +5,34 @@ export class MockFlowCoordinator {
     this.calls.push({ operation: "startSession", input });
     return {
       coordinator_session_id: `mock_${input.local_session_id}`,
-      understood_goal: input.goal,
+      task_contract: {
+        schema_version: "1.0",
+        skill: "task-setup",
+        status: "ready",
+        goal: input.goal,
+        deliverable: input.goal,
+        success_criteria: [`完成：${input.goal}`],
+        focus_minutes: input.focus_minutes,
+        relevance_hints: { keywords: [], apps: [], domains: [] },
+        clarification_question: null,
+        confidence: 0.9,
+      },
+    };
+  }
+
+  async clarifyTask(input) {
+    this.calls.push({ operation: "clarifyTask", input });
+    return {
+      schema_version: "1.0",
+      skill: "task-setup",
+      status: "ready",
+      goal: input.answer,
+      deliverable: input.answer,
+      success_criteria: [`完成：${input.answer}`],
+      focus_minutes: input.previous_contract.focus_minutes,
+      relevance_hints: { keywords: [], apps: [], domains: [] },
+      clarification_question: null,
+      confidence: 0.9,
     };
   }
 
@@ -36,4 +63,3 @@ export class MockFlowCoordinator {
     };
   }
 }
-

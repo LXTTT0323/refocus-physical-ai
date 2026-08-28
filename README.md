@@ -1,6 +1,6 @@
 # VentureD AI Hardware Hackathon 项目库
 
-> 状态：RE:FOCUS 方案已锁定；Desktop Bridge × `flow-coordinator` 真实闭环已验收；C 板 V2 固件已进入队友真机验证；产品 Skill 暂停设计  
+> 状态：RE:FOCUS 方案已锁定；Desktop Bridge × `flow-coordinator` 真实闭环与任务澄清已验收；C 板 V2 固件已进入队友真机验证；产品 Skill 暂停设计  
 > 最后核对：2026-08-28（Asia/Shanghai）  
 > 目标：用一套可重复演示的 Physical AI 闭环参赛，并让所有产品、技术和交付决策服从同一套官方标准。
 
@@ -253,6 +253,8 @@ Agent 云端从账号到硬件协议的逐步验收见 [Agent Stack 十步运行
 最新 API 实测证据见 [Agent Stack API Hello World 验收](evidence/hello-world-api-2026-08-28.md)。
 
 正式 Agent 的独立实测见 [flow-coordinator 基线验收](evidence/flow-coordinator-baseline-2026-08-28.md)。
+
+模糊任务追问、补充后进入 `ready` 的实测见 [Agent Stack 任务明确度验收](evidence/task-setup-agent-stack-2026-08-28.md)。
 
 ## 官方资料入口
 

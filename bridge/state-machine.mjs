@@ -9,7 +9,10 @@ export const STATES = Object.freeze({
 
 const transitions = new Map([
   [`${STATES.IDLE}:SESSION_START`, STATES.SETUP],
-  [`${STATES.SETUP}:ACTIVITY_SAMPLE`, STATES.FOCUSING],
+  [`${STATES.SETUP}:TASK_CLARIFICATION`, STATES.SETUP],
+  [`${STATES.SETUP}:ACTIVITY_SAMPLE`, STATES.SETUP],
+  [`${STATES.SETUP}:FOCUS_READY`, STATES.FOCUSING],
+  [`${STATES.SETUP}:SESSION_END`, STATES.ENDED],
   [`${STATES.FOCUSING}:ACTIVITY_SAMPLE`, STATES.FOCUSING],
   [`${STATES.FOCUSING}:PROGRESS_UPDATE`, STATES.FOCUSING],
   [`${STATES.FOCUSING}:INTERRUPTION_DETECTED`, STATES.INTERRUPTED],
@@ -67,6 +70,30 @@ function assertSemanticGuards(event) {
       !event.payload.restore_message.trim())
   ) {
     throw new Error("SESSION_RESUMED requires a non-empty restore_message");
+  }
+
+  if (event.event === "TASK_CLARIFICATION") {
+    if (
+      typeof event.payload.answer !== "string" ||
+      !event.payload.answer.trim()
+    ) {
+      throw new Error("TASK_CLARIFICATION requires a non-empty answer");
+    }
+  }
+
+  if (event.event === "FOCUS_READY") {
+    if (
+      event.payload.task_ready !== true ||
+      event.payload.present !== true ||
+      event.payload.context_relevant !== true
+    ) {
+      throw new Error(
+        "FOCUS_READY requires task_ready, present, and context_relevant to be true",
+      );
+    }
+    if (!(Number(event.payload.stable_seconds) >= 5)) {
+      throw new Error("FOCUS_READY requires stable_seconds >= 5");
+    }
   }
 }
 
@@ -132,4 +159,3 @@ export class RefocusStateMachine {
     return { ...transition };
   }
 }
-

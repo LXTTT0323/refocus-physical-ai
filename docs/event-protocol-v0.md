@@ -1,6 +1,6 @@
 # RE:FOCUS 事件协议 v0.1
 
-状态：已确认并实现本地状态机，可用于模拟闭环与 Windows Bridge 开发。
+状态：已确认并实现本地状态机，可用于模拟闭环与跨平台 Desktop Bridge 开发。
 
 ## 设计原则
 
@@ -41,6 +41,12 @@
 
 状态变化：`IDLE → SETUP`。
 
+### `TASK_CLARIFICATION`
+
+当 Agent 判断目标还不能形成可验证交付物时，设备保持黄灯慢闪并提出一个问题。用户的补充回答通过本事件送入同一个 Agent Stack Session。该事件可重复，但每次只回答当前问题。
+
+状态保持：`SETUP → SETUP`。
+
 ### `ACTIVITY_SAMPLE`
 
 由 Windows Bridge 每 3–5 秒产生，记录本地结构化观察：
@@ -51,6 +57,19 @@
 - 最近 10 秒的键盘、鼠标活动与系统空闲时长。
 
 该事件只提供事实，不能单独宣告“进入心流”或“发生中断”。摄像头字段允许 `unknown`，避免把检测失败误当成用户状态。
+
+在 `SETUP` 阶段，它只更新在席与窗口事实，不会直接进入专注。
+
+### `FOCUS_READY`
+
+由本地确定性门禁生成，必须同时满足：
+
+- Agent 返回的任务合同为 `ready`；
+- 检测到用户在场；
+- 当前应用/窗口与任务相关；
+- 三项条件连续稳定至少 5 秒。
+
+状态变化：`SETUP → FOCUSING`。此时黄灯熄灭、绿灯常亮并开始记录专注时间。
 
 ### `PROGRESS_UPDATE`
 
@@ -111,6 +130,7 @@ SESSION_RESUMED = 系统已经恢复完上下文，可以继续任务
 ```text
 SESSION_START
 → ACTIVITY_SAMPLE（重复）
+→ FOCUS_READY
 → PROGRESS_UPDATE（按需）
 → INTERRUPTION_DETECTED
 → RETURN_DETECTED

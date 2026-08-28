@@ -12,6 +12,7 @@ export class RefocusBridge {
   #checkpoint;
   #pendingRestore;
   #coordinatorSessionId;
+  #taskContract;
   #effects = [];
 
   constructor({ coordinator }) {
@@ -25,6 +26,10 @@ export class RefocusBridge {
 
   get checkpoint() {
     return this.#checkpoint ? structuredClone(this.#checkpoint) : undefined;
+  }
+
+  get taskContract() {
+    return this.#taskContract ? structuredClone(this.#taskContract) : undefined;
   }
 
   get effects() {
@@ -51,11 +56,45 @@ export class RefocusBridge {
           focus_minutes: event.payload.focus_minutes,
         });
         this.#coordinatorSessionId = result.coordinator_session_id;
+        this.#taskContract = result.task_contract;
+        if (this.#taskContract.status === "ready") {
+          this.#goal = this.#taskContract.goal;
+        }
         effects.push({
           type: "COORDINATOR_SESSION_READY",
           coordinator_session_id: this.#coordinatorSessionId,
-          understood_goal: result.understood_goal,
+          task_contract: structuredClone(this.#taskContract),
         });
+        effects.push(
+          this.#taskContract.status === "ready"
+            ? { type: "TASK_READY", task_contract: structuredClone(this.#taskContract) }
+            : {
+                type: "TASK_CLARIFICATION_REQUIRED",
+                question: this.#taskContract.clarification_question,
+              },
+        );
+        break;
+      }
+
+      case "TASK_CLARIFICATION": {
+        if (!this.#taskContract || this.#taskContract.status !== "needs_clarification") {
+          throw new Error("TASK_CLARIFICATION requires a pending clarification");
+        }
+        this.#taskContract = await this.#coordinator.clarifyTask({
+          coordinator_session_id: this.#coordinatorSessionId,
+          local_session_id: event.session_id,
+          previous_contract: structuredClone(this.#taskContract),
+          answer: event.payload.answer,
+        });
+        if (this.#taskContract.status === "ready") {
+          this.#goal = this.#taskContract.goal;
+          effects.push({ type: "TASK_READY", task_contract: structuredClone(this.#taskContract) });
+        } else {
+          effects.push({
+            type: "TASK_CLARIFICATION_REQUIRED",
+            question: this.#taskContract.clarification_question,
+          });
+        }
         break;
       }
 
@@ -144,4 +183,3 @@ export class RefocusBridge {
     return structuredClone(effects);
   }
 }
-

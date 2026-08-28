@@ -48,7 +48,8 @@ TiDB Agent Stack / flow-coordinator
 - Bridge：`bridge/`
 - 协议：`protocol/` 与 `docs/event-protocol-v0.md`
 - 已验收：Hello World、NDJSON、四节点真实 Agent 闭环。
-- 下一目标：先用电脑模拟信号跑通“任务明确 → 专注 → 交叉确认分心 → 恢复 → 总结”。
+- 已完成：明确任务合同，以及“模糊任务 → 追问一次 → 补充后 ready”的真实 Trace。
+- 下一目标：实现 Desktop Observer 的人在场与前台窗口采样，驱动 `FOCUS_READY` 门禁。
 
 ### C. 产品与演示
 
