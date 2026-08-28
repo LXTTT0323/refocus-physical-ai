@@ -361,6 +361,50 @@ test("productive tools without explicit distraction are neutral instead of unrel
   assert.match(result.evidence[0], /生产力工具/);
 });
 
+test("explicit entertainment observations stay unrelated even when the model is lenient", async () => {
+  const responses = [
+    new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }),
+    successfulTurn(taskContract(), "1"),
+    successfulTurn(contextContract({
+      classification: "neutral",
+      confidence: 0.6,
+      evidence: ["视频平台也可能用于学习"],
+    }), "2"),
+  ];
+  const coordinator = new AgentStackFlowCoordinator({
+    baseUrl: "https://example.invalid",
+    apiKey: "test-secret",
+    projectId: "proj_test",
+    agentId: "agent_test",
+    fetchImpl: async () => responses.shift(),
+  });
+  const started = await coordinator.startSession({
+    local_session_id: "local_test",
+    goal: "完成 RE:FOCUS 路演 PPT",
+    focus_minutes: 30,
+  });
+  const result = await coordinator.classifyContext({
+    task_contract: started.task_contract,
+    observation: {
+      visual_observation: {
+        source: "screen_share",
+        scene_type: "entertainment",
+        activity: "watching",
+        visible_text: ["搞笑视频"],
+        progress_signals: [],
+        distraction_signals: ["正在播放与任务无关的搞笑视频"],
+        confidence: 0.93,
+      },
+    },
+  });
+  assert.equal(result.classification, "unrelated");
+  assert.equal(result.confidence, 0.93);
+  assert.match(result.evidence[0], /娱乐内容/);
+});
+
 test("context relevance rejects extra reminder or hardware fields", async () => {
   const responses = [
     new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {

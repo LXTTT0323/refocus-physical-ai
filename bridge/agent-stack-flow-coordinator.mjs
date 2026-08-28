@@ -176,6 +176,17 @@ function protectProductiveContext(result, input) {
   const isProductiveTool = PRODUCTIVE_VISUAL_SCENES.has(visual?.scene_type);
   const hasExplicitDistraction = Array.isArray(visual?.distraction_signals)
     && visual.distraction_signals.length > 0;
+  if (visual?.scene_type === "entertainment" && hasExplicitDistraction) {
+    return {
+      ...result,
+      classification: "unrelated",
+      confidence: Math.max(result.confidence, Math.min(visual.confidence ?? 0.8, 0.95)),
+      evidence: [
+        `视觉明确识别到娱乐内容：${visual.distraction_signals[0]}`,
+        ...result.evidence.slice(0, 2),
+      ].slice(0, 3),
+    };
+  }
   if (result.classification !== "unrelated" || !isProductiveTool || hasExplicitDistraction) {
     return result;
   }

@@ -13,9 +13,9 @@
         <div>
           <p class="eyebrow">RE:FOCUS · LOCAL OBSERVER</p>
           <h1>让专注被看见，<span>不让隐私离开电脑。</span></h1>
-          <p class="lede">摄像头与屏幕只在本地分析。只有结构化信号和你主动填写的窗口信息会发送给 flow-coordinator。</p>
+          <p class="lede">摄像头的人脸信号在本地分析；开启自动视觉后，共享屏幕每 10 秒最多发送一张压缩快照给 OpenAI，再把结构化结果交给 flow-coordinator。</p>
         </div>
-        <div class="privacy-pill"><i></i> 原始画面不上云</div>
+        <div class="privacy-pill"><i></i> 不上传连续视频</div>
       </header>
 
       <section class="launch-card">
@@ -89,7 +89,7 @@
           </div>
           <div class="camera-recording-rule">
             <b>记录规则</b>
-            <span>在场稳定 0.8 秒｜人脸消失 3 秒记候选、30 秒确认离席｜偏头 3 秒记候选、30 秒确认偏离｜闭眼 0.8 秒｜张嘴 1.2 秒</span>
+            <span>人脸消失未满 3 秒继续绿灯，满 3 秒转红｜短暂转头继续绿灯，偏头 20 秒或与无关画面交叉确认才转红｜闭眼与哈欠只记录，不单独打断</span>
           </div>
         </article>
 
@@ -140,8 +140,8 @@
           <ul id="readinessList">
             <li data-gate="task"><i></i><span>任务合同为 ready</span></li>
             <li data-gate="present"><i></i><span>检测到人在场</span></li>
-            <li data-gate="context"><i></i><span>当前窗口相关</span></li>
-            <li data-gate="stable"><i></i><span>条件连续稳定至少 5 秒</span></li>
+            <li data-gate="context"><i></i><span>当前窗口相关或合理支持任务</span></li>
+            <li data-gate="stable"><i></i><span>进入稳定 5 秒；中断恢复稳定 3 秒</span></li>
           </ul>
           <div id="focusDecision" class="focus-decision">SETUP · 黄灯</div>
         </article>

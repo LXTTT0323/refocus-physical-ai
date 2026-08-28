@@ -1,4 +1,5 @@
 import { FaceLandmarker, FilesetResolver } from "/vendor/vision_bundle.mjs";
+import { FOCUS_THRESHOLDS, FocusSignalPolicy } from "/focus-policy.js";
 
 const $ = (selector) => document.querySelector(selector);
 const demoMode = new URLSearchParams(location.search).get("demo") === "1";
@@ -83,6 +84,8 @@ const state = {
   autoVisual: false,
   visualTimer: null,
   visualInFlight: false,
+  headAwaySeconds: 0,
+  focusPolicy: new FocusSignalPolicy(),
 };
 
 function setConnection(name, text, kind = "") {
@@ -124,11 +127,11 @@ async function loadVisualProvider() {
     const response = await fetch("/api/health");
     const health = await response.json();
     if (health.visual_provider === "openai") {
-      elements.visualPrivacy.textContent = `外部视觉已启用（${health.visual_model}）：每 30 秒最多一张压缩快照发送到 OpenAI，结构化观察再交给 Agent Stack；不上传连续视频。`;
+      elements.visualPrivacy.textContent = `外部视觉已启用（${health.visual_model}）：每 10 秒最多一张压缩快照发送到 OpenAI，失败时降级为本地 OCR；不上传连续视频。`;
     } else if (health.visual_provider === "agent_stack") {
-      elements.visualPrivacy.textContent = "Agent Stack 直接视觉已启用：每 30 秒最多发送一张压缩快照；不上传连续视频。";
+      elements.visualPrivacy.textContent = "Agent Stack 直接视觉已启用：每 10 秒最多发送一张压缩快照；不上传连续视频。";
     } else {
-      elements.visualPrivacy.textContent = "隐私模式：每 30 秒最多在本机 OCR 一张快照，只有提取文字发送给 Agent Stack；不上传连续视频。";
+      elements.visualPrivacy.textContent = "备用模式：每 10 秒最多在本机 OCR 一张快照，只有提取文字发送给 Agent Stack；不上传连续视频。";
     }
   } catch {
     elements.visualPrivacy.textContent = "无法确认视觉处理方式，请检查本地服务。";
@@ -169,6 +172,7 @@ function analyzeFaceResult(result, now) {
     state.confirmedPresent = false;
     state.missingSeconds = state.lastFaceAt ? Math.max(0, (now - state.lastFaceAt) / 1000) : 0;
     state.headDirection = "unknown";
+    state.headAwaySeconds = 0;
     state.eyeState = "unknown";
     state.eyeBlinkScore = 0;
     state.yawnDetected = false;
@@ -226,6 +230,7 @@ function analyzeFaceResult(result, now) {
     state.headConfirmedRecorded = false;
   }
   const headAwaySeconds = state.headDirection === "toward_screen" ? 0 : (now - state.headDirectionSince) / 1000;
+  state.headAwaySeconds = headAwaySeconds;
   if (headAwaySeconds >= 3 && !state.headCandidateRecorded) {
     state.headCandidateRecorded = true;
     addEvent("HEAD_AWAY_CANDIDATE", { direction: state.headDirection, duration_seconds: Number(headAwaySeconds.toFixed(1)) });
@@ -319,25 +324,27 @@ function analyzeScreen() {
 }
 
 function updateReadyGate() {
-  const gates = {
-    task: state.taskContract?.status === "ready",
-    present: state.confirmedPresent,
-    context: state.contextClassification === "relevant" || state.contextClassification === "neutral",
-  };
-  const baseReady = gates.task && gates.present && gates.context;
-  if (baseReady) state.readySince ||= performance.now();
-  else state.readySince = 0;
-  gates.stable = Boolean(state.readySince && performance.now() - state.readySince >= 5000);
-
-  for (const [name, pass] of Object.entries(gates)) {
+  const decision = state.focusPolicy.evaluate({
+    taskReady: state.taskContract?.status === "ready",
+    screenShared: state.screenShared,
+    present: state.present,
+    confirmedPresent: state.confirmedPresent,
+    lastFaceSeen: state.lastFaceAt > 0,
+    missingSeconds: state.missingSeconds,
+    headDirection: state.headDirection,
+    headAwaySeconds: state.headAwaySeconds,
+  });
+  for (const [name, pass] of Object.entries(decision.gates)) {
     document.querySelector(`[data-gate="${name}"]`).classList.toggle("pass", pass);
   }
-  if (Object.values(gates).every(Boolean)) {
-    elements.focusDecision.textContent = "FOCUSING · 绿灯";
-    elements.focusDecision.classList.add("ready");
+  elements.focusDecision.classList.toggle("ready", decision.light === "green");
+  elements.focusDecision.classList.toggle("interrupted", decision.light === "red");
+  if (decision.light === "green") {
+    elements.focusDecision.textContent = `FOCUSING · 绿灯｜${decision.reason}`;
+  } else if (decision.light === "red") {
+    elements.focusDecision.textContent = `INTERRUPTED · 红灯慢闪｜${decision.reason}`;
   } else {
-    elements.focusDecision.textContent = "SETUP · 黄灯";
-    elements.focusDecision.classList.remove("ready");
+    elements.focusDecision.textContent = `SETUP · 黄灯｜${decision.reason}`;
   }
 }
 
@@ -565,6 +572,7 @@ async function classifyContext() {
     });
     const result = response.result;
     state.contextClassification = result.classification;
+    state.focusPolicy.recordContext(result.classification);
     elements.classification.className = `classification-result ${result.classification}`;
     elements.classification.textContent = `${result.classification.toUpperCase()} · ${(result.confidence * 100).toFixed(0)}% · ${result.evidence.join("；")}`;
     addEvent("CONTEXT_CLASSIFIED", {
@@ -610,6 +618,7 @@ async function runVisualClassification() {
     });
     const result = response.result;
     state.contextClassification = result.classification;
+    const unrelatedStreak = state.focusPolicy.recordContext(result.classification);
     elements.visualResult.className = `classification-result ${result.classification}`;
     const modeLabel = response.processing?.mode === "local_ocr_then_agent_stack"
       ? `本地 OCR → Agent（识别 ${response.processing.ocr_characters ?? 0} 字）`
@@ -620,6 +629,7 @@ async function runVisualClassification() {
     addEvent("VISUAL_CONTEXT_CLASSIFIED", {
       source,
       classification: result.classification,
+      unrelated_streak: unrelatedStreak,
       processing_mode: response.processing?.mode,
       raw_image_uploaded_to_agent_stack: response.processing?.raw_image_uploaded_to_agent_stack,
       raw_image_uploaded_to_openai: response.processing?.raw_image_uploaded_to_openai,
@@ -634,7 +644,7 @@ async function runVisualClassification() {
     addEvent("VISUAL_CONTEXT_ERROR", { source, message: error.message });
   } finally {
     state.visualInFlight = false;
-    if (state.autoVisual) state.visualTimer = setTimeout(runVisualClassification, 30_000);
+    if (state.autoVisual) state.visualTimer = setTimeout(runVisualClassification, FOCUS_THRESHOLDS.visualIntervalMs);
   }
 }
 

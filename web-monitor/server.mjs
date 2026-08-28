@@ -70,7 +70,7 @@ export function createMonitorServer({
   coordinatorFactory,
   ocrExtractor = extractLocalText,
   visionMode = process.env.AGENT_STACK_VISION_MODE,
-  visualProvider = process.env.REFOCUS_VISUAL_PROVIDER ?? "ocr",
+  visualProvider = process.env.REFOCUS_VISUAL_PROVIDER ?? (process.env.OPENAI_API_KEY ? "openai" : "ocr"),
   visualObserver,
 } = {}) {
   const makeCoordinator = coordinatorFactory ?? (() => AgentStackFlowCoordinator.fromEnvironment());
