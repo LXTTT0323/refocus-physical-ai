@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://refocus.local/schemas/session-summary-v1.json",
+  "$id": "https://refocus.local/schemas/session-summary-v2.json",
   "title": "RE:FOCUS session summary contract",
   "type": "object",
   "additionalProperties": false,
@@ -14,9 +14,10 @@
     "next_action",
     "focus_minutes_actual",
     "interruptions"
+    ,"user_feedback"
   ],
   "properties": {
-    "schema_version": { "const": "1.0" },
+    "schema_version": { "const": "2.0" },
     "skill": { "const": "session-summary" },
     "goal": { "type": "string", "minLength": 1, "maxLength": 240 },
     "outcome": { "enum": ["completed", "partial", "cancelled", "unknown"] },
@@ -39,6 +40,15 @@
           "type": ["string", "null"],
           "enum": ["absent", "off_task", "idle", null]
         }
+      }
+    },
+    "user_feedback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["completion_report", "focus_experience"],
+      "properties": {
+        "completion_report": { "type": ["string", "null"], "minLength": 1, "maxLength": 300 },
+        "focus_experience": { "type": ["string", "null"], "minLength": 1, "maxLength": 300 }
       }
     }
   }

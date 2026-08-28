@@ -7,6 +7,10 @@ async function withServer(run) {
   const server = createMonitorServer({
     coordinatorFactory: () => new MockFlowCoordinator(),
     visionMode: "vision",
+    audioTranscriber: {
+      model: "gpt-4o-mini-transcribe",
+      transcribe: async () => ({ text: "语音测试成功", model: "gpt-4o-mini-transcribe" }),
+    },
   });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -38,6 +42,15 @@ test("monitor serves the local UI and keeps Agent Stack secrets server-side", as
     assert.ok(started.local_session_id.startsWith("local_web_"));
     assert.equal(JSON.stringify(started).includes("apiKey"), false);
 
+    const audioResponse = await fetch(`${baseUrl}/api/audio/transcribe`, {
+      method: "POST",
+      headers: { "Content-Type": "audio/webm" },
+      body: Buffer.from([1, 2, 3]),
+    });
+    assert.equal(audioResponse.status, 201);
+    const audio = await audioResponse.json();
+    assert.equal(audio.text, "语音测试成功");
+
     const contextResponse = await fetch(`${baseUrl}/api/context/relevance`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -68,6 +81,24 @@ test("monitor serves the local UI and keeps Agent Stack secrets server-side", as
     assert.equal(visualResponse.status, 201);
     const visual = await visualResponse.json();
     assert.equal(visual.result.classification, "relevant");
+
+    const endResponse = await fetch(`${baseUrl}/api/session/end`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        local_session_id: started.local_session_id,
+        user_feedback: {
+          completion_report: "完成了 PPT 前三页初稿",
+          focus_experience: "整体顺利，找素材时有些分心",
+        },
+        interruptions: { count: 1, total_seconds: 8.2, main_reason: "off_task" },
+      }),
+    });
+    assert.equal(endResponse.status, 201);
+    const ended = await endResponse.json();
+    assert.equal(ended.summary.schema_version, "2.0");
+    assert.equal(ended.summary.skill, "session-summary");
+    assert.equal(ended.summary.user_feedback.completion_report, "完成了 PPT 前三页初稿");
   });
 });
 

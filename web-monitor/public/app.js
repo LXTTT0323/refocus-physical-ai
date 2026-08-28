@@ -9,6 +9,7 @@ const elements = {
   goal: $("#goal"),
   minutes: $("#minutes"),
   start: $("#startButton"),
+  end: $("#endButton"),
   taskTest: $("#taskTestButton"),
   cameraTest: $("#cameraTestButton"),
   clarify: $("#clarifyButton"),
@@ -46,6 +47,17 @@ const elements = {
   contractDeliverable: $("#contractDeliverable"),
   contractCriteria: $("#contractCriteria"),
   contractHints: $("#contractHints"),
+  feedbackCard: $("#feedbackCard"),
+  completionFeedback: $("#completionFeedback"),
+  experienceFeedback: $("#experienceFeedback"),
+  voiceStatus: $("#voiceStatus"),
+  generateSummary: $("#generateSummaryButton"),
+  summaryCard: $("#summaryCard"),
+  summaryOutcome: $("#summaryOutcome"),
+  summaryText: $("#summaryText"),
+  summaryMinutes: $("#summaryMinutes"),
+  summaryInterruptions: $("#summaryInterruptions"),
+  summaryNextAction: $("#summaryNextAction"),
 };
 
 const state = {
@@ -89,6 +101,18 @@ const state = {
   headAwayStartedAt: 0,
   headDirectionFilter: new HeadDirectionFilter(),
   focusPolicy: new FocusSignalPolicy(),
+  sessionStartedAt: 0,
+  lastLight: "yellow",
+  interruptionStartedAt: 0,
+  interruptionCount: 0,
+  interruptionTotalMs: 0,
+  interruptionReasons: { absent: 0, off_task: 0, idle: 0 },
+  monitorTimers: [],
+  voiceRecorder: null,
+  voiceTargetId: null,
+  voiceButton: null,
+  voiceChunks: [],
+  voiceStream: null,
 };
 
 function setConnection(name, text, kind = "") {
@@ -352,6 +376,30 @@ function updateReadyGate() {
   } else {
     elements.focusDecision.textContent = `SETUP · 黄灯｜${decision.reason}`;
   }
+  if (decision.light !== state.lastLight) {
+    if (decision.light === "red" && state.lastLight === "green") {
+      state.interruptionCount += 1;
+      state.interruptionStartedAt = Date.now();
+      const reason = decision.reason.includes("未检测到人脸")
+        ? "absent"
+        : decision.reason.includes("无关") || decision.reason.includes("娱乐")
+          ? "off_task"
+          : "idle";
+      state.interruptionReasons[reason] += 1;
+      addEvent("INTERRUPTION_STARTED", { reason, detail: decision.reason });
+    }
+    if (decision.light === "green" && state.lastLight === "red" && state.interruptionStartedAt) {
+      state.interruptionTotalMs += Date.now() - state.interruptionStartedAt;
+      state.interruptionStartedAt = 0;
+      addEvent("INTERRUPTION_ENDED", { total_seconds: Number((state.interruptionTotalMs / 1000).toFixed(1)) });
+    }
+    state.lastLight = decision.light;
+  }
+}
+
+function rememberTimer(timer) {
+  state.monitorTimers.push(timer);
+  return timer;
 }
 
 function emitSample() {
@@ -384,6 +432,7 @@ async function startAgentSession() {
   });
   state.localSessionId = result.local_session_id;
   state.taskContract = result.task_contract;
+  state.sessionStartedAt ||= Date.now();
   setConnection("agent", "已连接 flow-coordinator", "ok");
   renderTaskContract();
   addEvent("AGENT_SESSION_READY", {
@@ -460,8 +509,9 @@ async function startMonitoring() {
       elements.stable.textContent = "0 秒";
       await startAgentSession();
       updateReadyGate();
-      setInterval(emitSample, 5000);
-      setInterval(updateReadyGate, 500);
+      rememberTimer(setInterval(emitSample, 5000));
+      rememberTimer(setInterval(updateReadyGate, 500));
+      elements.end.classList.remove("hidden");
       elements.start.textContent = "监测运行中";
       return;
     }
@@ -502,9 +552,10 @@ async function startMonitoring() {
     await startAgentSession();
     state.running = true;
     requestAnimationFrame(faceLoop);
-    setInterval(analyzeScreen, 1000);
-    setInterval(emitSample, 5000);
-    setInterval(updateReadyGate, 500);
+    rememberTimer(setInterval(analyzeScreen, 1000));
+    rememberTimer(setInterval(emitSample, 5000));
+    rememberTimer(setInterval(updateReadyGate, 500));
+    elements.end.classList.remove("hidden");
     elements.start.textContent = "监测运行中";
     addEvent("MONITORING_STARTED", { camera: true, screen: true });
   } catch (error) {
@@ -533,7 +584,7 @@ async function startCameraTest() {
     state.running = true;
     setConnection("camera", "测试中，本地分析", "ok");
     requestAnimationFrame(faceLoop);
-    setInterval(emitSample, 5000);
+    rememberTimer(setInterval(emitSample, 5000));
     elements.cameraTest.textContent = "摄像头测试中";
     addEvent("CAMERA_TEST_STARTED", { raw_video_uploaded: false });
   } catch (error) {
@@ -668,11 +719,187 @@ function toggleVisualClassification() {
   }
 }
 
+function openFeedback() {
+  if (!state.localSessionId) {
+    addEvent("END_ERROR", { message: "请先开始完整监测" });
+    return;
+  }
+  elements.feedbackCard.classList.remove("hidden");
+  elements.feedbackCard.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function startVoiceAnswer(targetId, button) {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) {
+    toggleRecordedVoiceAnswer(targetId, button);
+    return;
+  }
+  const recognition = new Recognition();
+  recognition.lang = "zh-CN";
+  recognition.interimResults = false;
+  recognition.continuous = false;
+  button.disabled = true;
+  button.textContent = "正在听…";
+  elements.voiceStatus.textContent = "请开始说话，停顿后会自动填入文字。";
+  recognition.onresult = (event) => {
+    const text = event.results?.[0]?.[0]?.transcript?.trim();
+    if (text) {
+      const target = document.getElementById(targetId);
+      target.value = [target.value.trim(), text].filter(Boolean).join(" ");
+    }
+  };
+  recognition.onerror = (event) => {
+    elements.voiceStatus.textContent = `语音识别未完成：${event.error}。可以直接输入。`;
+  };
+  recognition.onend = () => {
+    button.disabled = false;
+    button.textContent = targetId === "completionFeedback" ? "🎙 语音回答第一个问题" : "🎙 语音回答第二个问题";
+    if (!elements.voiceStatus.textContent.includes("未完成")) elements.voiceStatus.textContent = "语音已转成文字，可以继续补充或提交。";
+  };
+  recognition.start();
+}
+
+async function toggleRecordedVoiceAnswer(targetId, button) {
+  if (state.voiceRecorder?.state === "recording") {
+    state.voiceRecorder.stop();
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    elements.voiceStatus.textContent = "当前浏览器不支持录音，请直接输入回答。";
+    return;
+  }
+  try {
+    state.voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const preferredType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+    state.voiceChunks = [];
+    state.voiceTargetId = targetId;
+    state.voiceButton = button;
+    state.voiceRecorder = new MediaRecorder(state.voiceStream, { mimeType: preferredType });
+    state.voiceRecorder.ondataavailable = (event) => {
+      if (event.data.size) state.voiceChunks.push(event.data);
+    };
+    state.voiceRecorder.onstop = transcribeRecordedAnswer;
+    state.voiceRecorder.start();
+    button.textContent = "■ 停止并转成文字";
+    elements.voiceStatus.textContent = "正在录音。说完后再次点击按钮；音频会发送到 OpenAI 转成文字。";
+  } catch (error) {
+    elements.voiceStatus.textContent = `无法开始录音：${error.message}。可以直接输入。`;
+  }
+}
+
+async function transcribeRecordedAnswer() {
+  const button = state.voiceButton;
+  const targetId = state.voiceTargetId;
+  for (const track of state.voiceStream?.getTracks?.() ?? []) track.stop();
+  state.voiceStream = null;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "OpenAI 转写中…";
+  }
+  try {
+    const blob = new Blob(state.voiceChunks, { type: state.voiceRecorder.mimeType || "audio/webm" });
+    const response = await fetch("/api/audio/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": blob.type.split(";")[0] || "audio/webm" },
+      body: blob,
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
+    const target = document.getElementById(targetId);
+    target.value = [target.value.trim(), result.text].filter(Boolean).join(" ");
+    elements.voiceStatus.textContent = `语音已由 ${result.model} 转成文字，可以编辑后提交。`;
+  } catch (error) {
+    elements.voiceStatus.textContent = `语音转写失败：${error.message}。可以直接输入。`;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = targetId === "completionFeedback" ? "🎙 语音回答第一个问题" : "🎙 语音回答第二个问题";
+    }
+    state.voiceRecorder = null;
+    state.voiceTargetId = null;
+    state.voiceButton = null;
+    state.voiceChunks = [];
+  }
+}
+
+function interruptionSummary() {
+  const ongoingMs = state.interruptionStartedAt ? Date.now() - state.interruptionStartedAt : 0;
+  const reason = Object.entries(state.interruptionReasons).sort((a, b) => b[1] - a[1])[0];
+  return {
+    count: state.interruptionCount,
+    total_seconds: Number(((state.interruptionTotalMs + ongoingMs) / 1000).toFixed(1)),
+    main_reason: reason?.[1] > 0 ? reason[0] : null,
+  };
+}
+
+function stopMonitoring() {
+  state.running = false;
+  state.autoVisual = false;
+  clearTimeout(state.visualTimer);
+  for (const timer of state.monitorTimers) clearInterval(timer);
+  state.monitorTimers = [];
+  for (const stream of [state.cameraStream, state.screenStream]) {
+    for (const track of stream?.getTracks?.() ?? []) track.stop();
+  }
+  state.cameraStream = null;
+  state.screenStream = null;
+  state.screenShared = false;
+}
+
+async function generateSessionSummary() {
+  const completionReport = elements.completionFeedback.value.trim();
+  const focusExperience = elements.experienceFeedback.value.trim();
+  if (!completionReport || !focusExperience) {
+    elements.voiceStatus.textContent = "请先回答两个问题，再生成总结。";
+    return;
+  }
+  elements.generateSummary.disabled = true;
+  elements.generateSummary.textContent = "flow-coordinator 总结中…";
+  try {
+    const response = await api("/api/session/end", {
+      local_session_id: state.localSessionId,
+      user_feedback: {
+        completion_report: completionReport,
+        focus_experience: focusExperience,
+      },
+      interruptions: interruptionSummary(),
+    });
+    const summary = response.summary;
+    stopMonitoring();
+    elements.feedbackCard.classList.add("hidden");
+    elements.end.classList.add("hidden");
+    elements.summaryCard.classList.remove("hidden");
+    elements.summaryOutcome.textContent = summary.outcome.toUpperCase();
+    elements.summaryOutcome.className = `state-badge ${summary.outcome === "completed" ? "good" : "warn"}`;
+    elements.summaryText.textContent = summary.summary;
+    elements.summaryMinutes.textContent = summary.focus_minutes_actual === null ? "未记录" : `${summary.focus_minutes_actual} 分钟`;
+    elements.summaryInterruptions.textContent = `${summary.interruptions.count} 次 · ${summary.interruptions.total_seconds} 秒`;
+    elements.summaryNextAction.textContent = summary.next_action ?? "本次任务已完成";
+    addEvent("SESSION_SUMMARY_READY", {
+      outcome: summary.outcome,
+      status: response.trace.at(-1)?.status,
+      assistant_message: response.trace.at(-1)?.assistantMessageObserved,
+    });
+    elements.summaryCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (error) {
+    elements.voiceStatus.textContent = `总结生成失败：${error.message}`;
+    elements.generateSummary.disabled = false;
+    elements.generateSummary.textContent = "重新生成总结";
+  }
+}
+
 elements.start.addEventListener("click", startMonitoring);
 elements.taskTest.addEventListener("click", testTaskUnderstanding);
 elements.cameraTest.addEventListener("click", startCameraTest);
 elements.clarify.addEventListener("click", clarifyTask);
 elements.classify.addEventListener("click", classifyContext);
 elements.visualClassify.addEventListener("click", toggleVisualClassification);
+elements.end.addEventListener("click", openFeedback);
+elements.generateSummary.addEventListener("click", generateSessionSummary);
+for (const button of document.querySelectorAll("[data-voice-target]")) {
+  button.addEventListener("click", () => startVoiceAnswer(button.dataset.voiceTarget, button));
+}
 loadFaceModel();
 loadVisualProvider();

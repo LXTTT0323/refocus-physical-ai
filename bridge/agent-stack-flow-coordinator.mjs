@@ -121,6 +121,9 @@ const TASK_CONTRACT_SHAPE =
 const CONTEXT_RELEVANCE_SHAPE =
   '{"schema_version":"1.0","skill":"context-relevance","classification":"relevant","confidence":0.9,"evidence":["简短证据"],"matched_hints":{"keywords":[],"apps":[],"domains":[]}}。所有字段都必须出现，classification 只能是 relevant、neutral、unrelated、unknown';
 
+const SESSION_SUMMARY_SHAPE =
+  '{"schema_version":"2.0","skill":"session-summary","goal":"任务目标","outcome":"partial","summary":"一到两句话的事实总结","completed_items":[],"next_action":"一个具体下一步或 null","focus_minutes_actual":30,"interruptions":{"count":0,"total_seconds":0,"main_reason":null},"user_feedback":{"completion_report":"用户完成情况的简短转述或 null","focus_experience":"用户专注感受的简短转述或 null"}}。所有字段都必须出现；outcome 只能是 completed、partial、cancelled、unknown；不得输出评分、诊断、灯光或硬件命令';
+
 function validateContextRelevance(value) {
   const classes = new Set(["relevant", "neutral", "unrelated", "unknown"]);
   requireExactKeys(
@@ -156,6 +159,59 @@ function validateContextRelevance(value) {
       domains: value.matched_hints.domains.slice(0, 6),
     },
   };
+}
+
+function validateSessionSummary(value) {
+  requireExactKeys(
+    value,
+    [
+      "schema_version",
+      "skill",
+      "goal",
+      "outcome",
+      "summary",
+      "completed_items",
+      "next_action",
+      "focus_minutes_actual",
+      "interruptions",
+      "user_feedback",
+    ],
+    "Session summary contract",
+  );
+  if (value.schema_version !== "2.0" || value.skill !== "session-summary") {
+    throw new Error("Coordinator response is not a session-summary v2 contract");
+  }
+  requireString(value, "goal");
+  requireString(value, "summary");
+  requireArray(value, "completed_items", 6);
+  if (!new Set(["completed", "partial", "cancelled", "unknown"]).has(value.outcome)) {
+    throw new Error("Coordinator response has invalid session outcome");
+  }
+  if (value.next_action !== null) requireString(value, "next_action");
+  if (value.focus_minutes_actual !== null && (!Number.isInteger(value.focus_minutes_actual) || value.focus_minutes_actual < 0 || value.focus_minutes_actual > 1440)) {
+    throw new Error("Coordinator response has invalid focus_minutes_actual");
+  }
+  if (!value.interruptions || typeof value.interruptions !== "object" || Array.isArray(value.interruptions)) {
+    throw new Error("Coordinator response requires interruptions");
+  }
+  requireExactKeys(value.interruptions, ["count", "total_seconds", "main_reason"], "interruptions");
+  if (!Number.isInteger(value.interruptions.count) || value.interruptions.count < 0) {
+    throw new Error("Coordinator response has invalid interruption count");
+  }
+  if (typeof value.interruptions.total_seconds !== "number" || value.interruptions.total_seconds < 0) {
+    throw new Error("Coordinator response has invalid interruption duration");
+  }
+  if (!new Set(["absent", "off_task", "idle", null]).has(value.interruptions.main_reason)) {
+    throw new Error("Coordinator response has invalid interruption reason");
+  }
+  if (!value.user_feedback || typeof value.user_feedback !== "object" || Array.isArray(value.user_feedback)) {
+    throw new Error("Coordinator response requires user_feedback");
+  }
+  requireExactKeys(value.user_feedback, ["completion_report", "focus_experience"], "user_feedback");
+  for (const field of ["completion_report", "focus_experience"]) {
+    if (value.user_feedback[field] !== null) requireString(value.user_feedback, field);
+  }
+  return value;
 }
 
 const PRODUCTIVE_VISUAL_SCENES = new Set([
@@ -539,10 +595,8 @@ export class AgentStackFlowCoordinator {
     const result = await this.#runJsonTurn(
       "END_SESSION",
       input,
-      '{"summary":"string","completed":boolean}',
+      SESSION_SUMMARY_SHAPE,
     );
-    requireString(result, "summary");
-    requireBoolean(result, "completed");
-    return result;
+    return validateSessionSummary(result);
   }
 }

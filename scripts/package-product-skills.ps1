@@ -1,5 +1,6 @@
 param(
-  [string]$OutputDirectory = "dist/skills"
+  [string]$OutputDirectory = "dist/skills",
+  [string]$VersionLabel = "v2"
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,7 +19,7 @@ foreach ($skillName in $skillNames) {
     throw "Missing Skill entrypoint: $entrypoint"
   }
 
-  $archive = Join-Path $outputRoot "$skillName.zip"
+  $archive = Join-Path $outputRoot "$skillName-$VersionLabel.zip"
   if (Test-Path -LiteralPath $archive) {
     Remove-Item -LiteralPath $archive -Force
   }
@@ -28,7 +29,7 @@ foreach ($skillName in $skillNames) {
 }
 
 $skillNames | ForEach-Object {
-  $archive = Join-Path $outputRoot "$_.zip"
+  $archive = Join-Path $outputRoot "$_-$VersionLabel.zip"
   [pscustomobject]@{
     Skill = $_
     Archive = $archive

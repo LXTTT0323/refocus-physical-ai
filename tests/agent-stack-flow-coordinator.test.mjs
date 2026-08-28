@@ -77,6 +77,25 @@ function contextContract(overrides = {}) {
   });
 }
 
+function summaryContract(overrides = {}) {
+  return JSON.stringify({
+    schema_version: "2.0",
+    skill: "session-summary",
+    goal: "完成 PPT 前三页",
+    outcome: "partial",
+    summary: "完成了结构整理，第三页数据仍需补充。",
+    completed_items: ["完成前三页结构"],
+    next_action: "补充第三页数据",
+    focus_minutes_actual: 28,
+    interruptions: { count: 1, total_seconds: 12.5, main_reason: "off_task" },
+    user_feedback: {
+      completion_report: "完成了前三页结构",
+      focus_experience: "前半段顺利，找数据时分心",
+    },
+    ...overrides,
+  });
+}
+
 test("real coordinator adapter creates one Session and parses NDJSON Turns", async () => {
   const responses = [
     new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
@@ -92,7 +111,7 @@ test("real coordinator adapter creates one Session and parses NDJSON Turns", asy
       '{"restore_message":"刚完成结构，继续补充痛点。","next_action":"补充痛点"}',
       "3",
     ),
-    successfulTurn('{"summary":"完成了结构整理","completed":true}', "4"),
+    successfulTurn(summaryContract(), "4"),
   ];
   const requests = [];
   const fetchImpl = async (url, options) => {
@@ -114,13 +133,20 @@ test("real coordinator adapter creates one Session and parses NDJSON Turns", asy
   });
   const checkpoint = await coordinator.createCheckpoint({ interruption_sequence: 4 });
   const restore = await coordinator.createRestore({ checkpoint });
-  const summary = await coordinator.endSession({ end_reason: "user_finished" });
+  const summary = await coordinator.endSession({
+    end_reason: "user_finished",
+    user_feedback: {
+      completion_report: "完成了前三页结构",
+      focus_experience: "前半段顺利，找数据时分心",
+    },
+  });
 
   assert.equal(started.coordinator_session_id, "sess_test");
   assert.equal(started.task_contract.status, "ready");
   assert.equal(checkpoint.next_action, "补充痛点");
   assert.equal(restore.restore_message, "刚完成结构，继续补充痛点。");
-  assert.equal(summary.completed, true);
+  assert.equal(summary.outcome, "partial");
+  assert.equal(summary.user_feedback.completion_report, "完成了前三页结构");
   assert.equal(requests.length, 5);
   assert.equal(coordinator.trace.length, 4);
   assert.ok(coordinator.trace.every(({ status }) => status === "succeeded"));

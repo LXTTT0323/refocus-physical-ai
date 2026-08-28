@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { AgentStackFlowCoordinator } from "../bridge/agent-stack-flow-coordinator.mjs";
 import { extractLocalText } from "../bridge/local-ocr.mjs";
 import { OpenAIVisualObserver } from "../bridge/openai-visual-observer.mjs";
+import { OpenAIAudioTranscriber } from "../bridge/openai-audio-transcriber.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(here);
@@ -43,6 +44,17 @@ async function readJson(request, maxBytes = 64 * 1024) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+async function readBytes(request, maxBytes) {
+  const chunks = [];
+  let bytes = 0;
+  for await (const chunk of request) {
+    bytes += chunk.length;
+    if (bytes > maxBytes) throw new Error("Request body is too large");
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 function safeMessage(error) {
   const message = error instanceof Error ? error.message : "Unknown error";
   return message.replace(/Bearer\s+\S+/gi, "Bearer [redacted]");
@@ -72,14 +84,16 @@ export function createMonitorServer({
   visionMode = process.env.AGENT_STACK_VISION_MODE,
   visualProvider = process.env.REFOCUS_VISUAL_PROVIDER ?? (process.env.OPENAI_API_KEY ? "openai" : "ocr"),
   visualObserver,
+  audioTranscriber,
 } = {}) {
   const makeCoordinator = coordinatorFactory ?? (() => AgentStackFlowCoordinator.fromEnvironment());
   const externalVisualObserver = visualObserver ?? (
     visualProvider === "openai" ? OpenAIVisualObserver.fromEnvironment() : null
   );
+  const externalAudioTranscriber = audioTranscriber ?? OpenAIAudioTranscriber.fromEnvironment();
 
   return createServer(async (request, response) => {
-    response.setHeader("Permissions-Policy", "camera=(self), display-capture=(self), microphone=()");
+    response.setHeader("Permissions-Policy", "camera=(self), display-capture=(self), microphone=(self)");
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Referrer-Policy", "no-referrer");
 
@@ -99,7 +113,21 @@ export function createMonitorServer({
           visual_model: externalVisualObserver?.model ?? null,
           visual_image_leaves_device: Boolean(externalVisualObserver) || visionMode === "vision",
           active_sessions: sessions.size,
+          audio_transcription_enabled: Boolean(externalAudioTranscriber),
+          audio_transcription_model: externalAudioTranscriber?.model ?? null,
         });
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/audio/transcribe") {
+        if (!externalAudioTranscriber) return json(response, 503, { error: "audio transcription is not configured" });
+        const contentType = String(request.headers["content-type"] ?? "").split(";")[0];
+        if (!new Set(["audio/webm", "audio/wav", "audio/mpeg", "audio/mp4", "audio/ogg"]).has(contentType)) {
+          return json(response, 415, { error: "unsupported audio type" });
+        }
+        const audio = await readBytes(request, 5 * 1024 * 1024);
+        if (!audio.length) return json(response, 400, { error: "audio is required" });
+        const result = await externalAudioTranscriber.transcribe(audio, { contentType });
+        return json(response, 201, result);
       }
 
       if (request.method === "POST" && url.pathname === "/api/session/start") {
@@ -127,6 +155,52 @@ export function createMonitorServer({
           coordinator_session_id: started.coordinator_session_id,
           task_contract: started.task_contract,
           trace: coordinator.trace,
+        });
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/session/end") {
+        const body = await readJson(request);
+        const active = sessions.get(body.local_session_id);
+        if (!active) return json(response, 404, { error: "monitor session not found" });
+        const completionReport = typeof body.user_feedback?.completion_report === "string"
+          ? body.user_feedback.completion_report.trim()
+          : "";
+        const focusExperience = typeof body.user_feedback?.focus_experience === "string"
+          ? body.user_feedback.focus_experience.trim()
+          : "";
+        if (!completionReport || !focusExperience) {
+          return json(response, 400, { error: "both feedback answers are required" });
+        }
+        const interruptionCount = Number(body.interruptions?.count ?? 0);
+        const interruptionSeconds = Number(body.interruptions?.total_seconds ?? 0);
+        const mainReason = ["absent", "off_task", "idle"].includes(body.interruptions?.main_reason)
+          ? body.interruptions.main_reason
+          : null;
+        const focusMinutesActual = Math.max(0, Math.round((Date.now() - active.createdAt) / 60_000));
+        const summary = await active.coordinator.endSession({
+          local_session_id: body.local_session_id,
+          task_contract: active.taskContract,
+          goal: active.taskContract.goal,
+          success_criteria: active.taskContract.success_criteria,
+          recent_progress: [],
+          focus_minutes_actual: focusMinutesActual,
+          interruptions: {
+            count: Number.isInteger(interruptionCount) && interruptionCount >= 0 ? interruptionCount : 0,
+            total_seconds: Number.isFinite(interruptionSeconds) && interruptionSeconds >= 0
+              ? Number(interruptionSeconds.toFixed(1))
+              : 0,
+            main_reason: mainReason,
+          },
+          user_feedback: {
+            completion_report: completionReport,
+            focus_experience: focusExperience,
+          },
+          end_reason: "user_finished",
+        });
+        sessions.delete(body.local_session_id);
+        return json(response, 201, {
+          summary,
+          trace: active.coordinator.trace,
         });
       }
 

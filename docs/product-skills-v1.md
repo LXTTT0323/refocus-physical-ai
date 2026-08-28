@@ -1,4 +1,4 @@
-# RE:FOCUS 产品 Skills v1
+# RE:FOCUS 产品 Skills v2
 
 状态：三个本地包及输出合同已完成验证，尚未发布或安装到线上 `flow-coordinator`。
 
@@ -8,7 +8,14 @@
 | --- | --- | --- | --- |
 | `task-setup` | Session 开始或用户补充目标时 | 形成可验证任务合同，必要时只追问一个问题 | 窗口判断、提醒、硬件 |
 | `context-relevance` | 本地规则无法判断某个窗口时 | 将一个前台上下文分类为 relevant / neutral / unrelated / unknown | 摄像头、人体状态、提醒、硬件 |
-| `session-summary` | Session 主动结束或取消后 | 根据已验证事件生成事实总结和一个下一步 | 实时判断、评分、硬件 |
+| `session-summary` | Session 主动结束或取消后 | 结合任务事实和两段用户反馈生成事实总结与下一步 | 实时判断、评分、硬件 |
+
+结束时只问两个问题：
+
+1. 这次完成了什么，任务完成到什么程度？
+2. 刚才的专注感受怎么样，最顺或最卡的地方是什么？
+
+优先使用浏览器语音识别；不支持时录制一段音频交给 OpenAI 转写，也允许直接输入。转写文字与任务事件交给 `session-summary`，原始音频不进入 Skill 合同。
 
 ## 提醒与灯光不放进 Skill
 
@@ -60,7 +67,7 @@ python -m unittest tests/test_product_skill_contracts.py -v
 
 ## 上线前剩余步骤
 
-1. 使用真实输入分别前向测试三个 Skill。
+1. 使用真实输入分别前向测试三个 Skill（`session-summary` v2 真实 Turn 已通过）。
 2. 在 Agent Stack Console 创建或上传 Skill 包。
 3. 检查版本和文件后发布。
 4. 将精确版本安装到 `flow-coordinator`。

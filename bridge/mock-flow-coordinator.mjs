@@ -97,8 +97,19 @@ export class MockFlowCoordinator {
   async endSession(input) {
     this.calls.push({ operation: "endSession", input });
     return {
-      summary: `目标：${input.goal}；记录了 ${input.progress_count} 次进展。`,
-      completed: input.end_reason === "user_finished",
+      schema_version: "2.0",
+      skill: "session-summary",
+      goal: input.goal,
+      outcome: input.user_feedback?.completion_report ? "partial" : "unknown",
+      summary: `目标：${input.goal}；用户反馈：${input.user_feedback?.completion_report ?? "未提供完成情况"}。`,
+      completed_items: [],
+      next_action: input.user_feedback?.focus_experience ? "根据本次卡点继续完成最小下一步" : null,
+      focus_minutes_actual: input.focus_minutes_actual ?? null,
+      interruptions: input.interruptions ?? { count: 0, total_seconds: 0, main_reason: null },
+      user_feedback: {
+        completion_report: input.user_feedback?.completion_report ?? null,
+        focus_experience: input.user_feedback?.focus_experience ?? null,
+      },
     };
   }
 }

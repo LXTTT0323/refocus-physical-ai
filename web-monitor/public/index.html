@@ -35,6 +35,7 @@
           <button id="taskTestButton" class="secondary">仅测试任务理解</button>
           <button id="cameraTestButton" class="secondary">仅测试摄像头</button>
           <button id="startButton" class="primary">开始完整监测</button>
+          <button id="endButton" class="danger hidden">结束并生成总结</button>
         </div>
         <p class="permission-note">首次点击会出现两个系统授权框：摄像头，以及你选择共享的屏幕或任务窗口。</p>
       </section>
@@ -45,6 +46,38 @@
         <div class="clarification-row">
           <input id="clarificationAnswer" placeholder="补充一个具体交付物" />
           <button id="clarifyButton">提交补充</button>
+        </div>
+      </section>
+
+      <section id="feedbackCard" class="feedback-card hidden">
+        <div class="panel-head">
+          <div><p class="eyebrow">SESSION REFLECTION</p><h2>结束前，简单回答两个问题</h2></div>
+          <span class="state-badge neutral">支持语音</span>
+        </div>
+        <div class="feedback-grid">
+          <label>1. 这次完成了什么？任务完成到什么程度？
+            <textarea id="completionFeedback" maxlength="800" placeholder="例如：完成了前三页初稿，但第三页还需要补充数据。"></textarea>
+          </label>
+          <button class="voice-button" data-voice-target="completionFeedback">🎙 语音回答第一个问题</button>
+          <label>2. 刚才的专注感受怎么样？最顺或最卡的地方是什么？
+            <textarea id="experienceFeedback" maxlength="800" placeholder="例如：前半段很顺，后面找素材时容易分心；下一步先补数据。"></textarea>
+          </label>
+          <button class="voice-button" data-voice-target="experienceFeedback">🎙 语音回答第二个问题</button>
+        </div>
+        <p id="voiceStatus" class="permission-note">优先使用浏览器语音识别；不支持时录制单段音频并发送给 OpenAI 转文字，不保存音频。也可以直接输入。</p>
+        <button id="generateSummaryButton" class="primary summary-button">提交回答并生成总结</button>
+      </section>
+
+      <section id="summaryCard" class="summary-card hidden">
+        <div class="panel-head">
+          <div><p class="eyebrow">SESSION SUMMARY</p><h2>本次 RE:FOCUS 总结</h2></div>
+          <span id="summaryOutcome" class="state-badge neutral">—</span>
+        </div>
+        <p id="summaryText" class="summary-text">—</p>
+        <div class="summary-grid">
+          <div><span>实际时长</span><strong id="summaryMinutes">—</strong></div>
+          <div><span>中断</span><strong id="summaryInterruptions">—</strong></div>
+          <div><span>下一步</span><strong id="summaryNextAction">—</strong></div>
         </div>
       </section>
 
