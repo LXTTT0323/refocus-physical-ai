@@ -211,6 +211,8 @@ Agent 云端从账号到硬件协议的逐步验收见 [Agent Stack 十步运行
 
 模糊任务追问、具体任务合同和相关线索白名单的最新实测见 [任务检测与理解真人验收](evidence/task-understanding-live-check-2026-08-28.md)。
 
+相关任务窗口与无关窗口的正反例实测见 [屏幕上下文与任务相关性真人验收](evidence/screen-context-live-check-2026-08-28.md)。
+
 详见 [产品方向与评奖分析](docs/product-direction.md) 和 [技术实施基线](docs/technical-plan.md)。
 
 ## 官方交付物清单
