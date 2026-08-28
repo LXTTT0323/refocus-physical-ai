@@ -31,7 +31,10 @@
             <option value="60">60 分钟</option>
           </select>
         </div>
-        <button id="startButton" class="primary">开始监测</button>
+        <div class="launch-actions">
+          <button id="cameraTestButton" class="secondary">仅测试摄像头</button>
+          <button id="startButton" class="primary">开始完整监测</button>
+        </div>
         <p class="permission-note">首次点击会出现两个系统授权框：摄像头，以及你选择共享的屏幕或任务窗口。</p>
       </section>
 
@@ -69,6 +72,10 @@
             <div><span>眼睛状态</span><strong id="eyeMetric">—</strong></div>
             <div><span>哈欠候选</span><strong id="yawnMetric">—</strong></div>
             <div><span>本地模型</span><strong id="modelMetric">加载中</strong></div>
+          </div>
+          <div class="camera-recording-rule">
+            <b>记录规则</b>
+            <span>在场稳定 0.8 秒｜人脸消失 3 秒记候选、30 秒确认离席｜偏头 3 秒记候选、30 秒确认偏离｜闭眼 0.8 秒｜张嘴 1.2 秒</span>
           </div>
         </article>
 

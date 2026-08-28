@@ -7,6 +7,7 @@ const elements = {
   goal: $("#goal"),
   minutes: $("#minutes"),
   start: $("#startButton"),
+  cameraTest: $("#cameraTestButton"),
   clarify: $("#clarifyButton"),
   classify: $("#classifyButton"),
   clarificationCard: $("#clarificationCard"),
@@ -42,11 +43,22 @@ const state = {
   cameraStream: null,
   screenStream: null,
   present: false,
+  confirmedPresent: false,
+  faceCandidateAt: 0,
   lastFaceAt: 0,
   missingSeconds: 0,
+  missingCandidateRecorded: false,
+  absentConfirmedRecorded: false,
   headDirection: "unknown",
+  headDirectionSince: 0,
+  headCandidateRecorded: false,
+  headConfirmedRecorded: false,
   eyeState: "unknown",
+  eyeBlinkScore: 0,
   yawnDetected: false,
+  jawOpenScore: 0,
+  eyeRecorded: false,
+  yawnRecorded: false,
   blinkCandidateAt: 0,
   yawnCandidateAt: 0,
   screenShared: false,
@@ -123,19 +135,40 @@ function analyzeFaceResult(result, now) {
   const landmarks = result.faceLandmarks?.[0];
   if (!landmarks) {
     state.present = false;
+    state.faceCandidateAt = 0;
+    state.confirmedPresent = false;
     state.missingSeconds = state.lastFaceAt ? Math.max(0, (now - state.lastFaceAt) / 1000) : 0;
     state.headDirection = "unknown";
     state.eyeState = "unknown";
+    state.eyeBlinkScore = 0;
     state.yawnDetected = false;
+    state.jawOpenScore = 0;
     state.blinkCandidateAt = 0;
     state.yawnCandidateAt = 0;
+    state.eyeRecorded = false;
+    state.yawnRecorded = false;
+    if (state.missingSeconds >= 3 && !state.missingCandidateRecorded) {
+      state.missingCandidateRecorded = true;
+      addEvent("FACE_MISSING_CANDIDATE", { missing_seconds: Number(state.missingSeconds.toFixed(1)) });
+    }
+    if (state.missingSeconds >= 30 && !state.absentConfirmedRecorded) {
+      state.absentConfirmedRecorded = true;
+      addEvent("FACE_ABSENT_CONFIRMED", { missing_seconds: Number(state.missingSeconds.toFixed(1)) });
+    }
     renderPersonMetrics();
     return;
   }
 
   state.present = true;
+  state.faceCandidateAt ||= now;
+  if (!state.confirmedPresent && now - state.faceCandidateAt >= 800) {
+    state.confirmedPresent = true;
+    addEvent("FACE_PRESENT", { stable_seconds: Number(((now - state.faceCandidateAt) / 1000).toFixed(1)) });
+  }
   state.lastFaceAt = now;
   state.missingSeconds = 0;
+  state.missingCandidateRecorded = false;
+  state.absentConfirmedRecorded = false;
 
   const nose = landmarks[1];
   const left = landmarks[234];
@@ -146,21 +179,54 @@ function analyzeFaceResult(result, now) {
   const height = Math.max(0.001, Math.abs(chin.y - top.y));
   const yaw = (nose.x - (left.x + right.x) / 2) / width;
   const pitch = (nose.y - (top.y + chin.y) / 2) / height;
-  if (Math.abs(pitch) > 0.16) state.headDirection = "away";
-  else if (yaw < -0.11) state.headDirection = "left";
-  else if (yaw > 0.11) state.headDirection = "right";
-  else state.headDirection = "toward_screen";
+  let nextHeadDirection;
+  if (Math.abs(pitch) > 0.16) nextHeadDirection = "away";
+  // The preview is mirrored like a normal selfie camera, so user-facing left/right
+  // is the reverse of the model's raw image x-axis.
+  else if (yaw < -0.11) nextHeadDirection = "right";
+  else if (yaw > 0.11) nextHeadDirection = "left";
+  else nextHeadDirection = "toward_screen";
+  if (nextHeadDirection !== state.headDirection) {
+    if (state.headDirection !== "unknown" && nextHeadDirection === "toward_screen") {
+      addEvent("HEAD_RETURNED", { from: state.headDirection });
+    }
+    state.headDirection = nextHeadDirection;
+    state.headDirectionSince = now;
+    state.headCandidateRecorded = false;
+    state.headConfirmedRecorded = false;
+  }
+  const headAwaySeconds = state.headDirection === "toward_screen" ? 0 : (now - state.headDirectionSince) / 1000;
+  if (headAwaySeconds >= 3 && !state.headCandidateRecorded) {
+    state.headCandidateRecorded = true;
+    addEvent("HEAD_AWAY_CANDIDATE", { direction: state.headDirection, duration_seconds: Number(headAwaySeconds.toFixed(1)) });
+  }
+  if (headAwaySeconds >= 30 && !state.headConfirmedRecorded) {
+    state.headConfirmedRecorded = true;
+    addEvent("HEAD_AWAY_CONFIRMED", { direction: state.headDirection, duration_seconds: Number(headAwaySeconds.toFixed(1)) });
+  }
 
   const shapes = blendshapeMap(result);
   const blink = ((shapes.get("eyeBlinkLeft") ?? 0) + (shapes.get("eyeBlinkRight") ?? 0)) / 2;
+  state.eyeBlinkScore = blink;
   if (blink > 0.55) state.blinkCandidateAt ||= now;
   else state.blinkCandidateAt = 0;
   state.eyeState = state.blinkCandidateAt && now - state.blinkCandidateAt >= 800 ? "closed" : "open";
+  if (state.eyeState === "closed" && !state.eyeRecorded) {
+    state.eyeRecorded = true;
+    addEvent("EYES_CLOSED_CANDIDATE", { duration_seconds: 0.8 });
+  }
+  if (state.eyeState === "open") state.eyeRecorded = false;
 
   const jawOpen = shapes.get("jawOpen") ?? 0;
+  state.jawOpenScore = jawOpen;
   if (jawOpen > 0.58) state.yawnCandidateAt ||= now;
   else state.yawnCandidateAt = 0;
   state.yawnDetected = Boolean(state.yawnCandidateAt && now - state.yawnCandidateAt >= 1200);
+  if (state.yawnDetected && !state.yawnRecorded) {
+    state.yawnRecorded = true;
+    addEvent("YAWN_CANDIDATE", { duration_seconds: 1.2 });
+  }
+  if (!state.yawnDetected) state.yawnRecorded = false;
   renderPersonMetrics();
 }
 
@@ -174,8 +240,8 @@ function renderPersonMetrics() {
     away: "上下偏离",
     unknown: "未知",
   }[state.headDirection];
-  elements.eye.textContent = { open: "睁开", closed: "持续闭眼", unknown: "未知" }[state.eyeState];
-  elements.yawn.textContent = state.yawnDetected ? "检测到候选" : "否";
+  elements.eye.textContent = `${{ open: "睁开", closed: "持续闭眼", unknown: "未知" }[state.eyeState]} · ${state.eyeBlinkScore.toFixed(2)}`;
+  elements.yawn.textContent = `${state.yawnDetected ? "检测到候选" : "否"} · ${state.jawOpenScore.toFixed(2)}`;
   if (state.present) badge(elements.personState, "人在场", state.headDirection === "toward_screen" ? "good" : "warn");
   else badge(elements.personState, state.missingSeconds >= 30 ? "离席" : "未检测到", state.missingSeconds >= 30 ? "bad" : "warn");
   updateReadyGate();
@@ -225,7 +291,7 @@ function analyzeScreen() {
 function updateReadyGate() {
   const gates = {
     task: state.taskContract?.status === "ready",
-    present: state.present,
+    present: state.confirmedPresent,
     context: state.contextClassification === "relevant" || state.contextClassification === "neutral",
   };
   const baseReady = gates.task && gates.present && gates.context;
@@ -248,11 +314,17 @@ function updateReadyGate() {
 function emitSample() {
   if (!state.running) return;
   addEvent("ACTIVITY_SAMPLE", {
-    presence: { present: state.present, missing_seconds: Number(state.missingSeconds.toFixed(1)) },
+    presence: {
+      present: state.present,
+      confirmed_present: state.confirmedPresent,
+      missing_seconds: Number(state.missingSeconds.toFixed(1)),
+    },
     camera: {
       head_direction: state.headDirection,
       eye_state: state.eyeState,
+      eye_blink_score: Number(state.eyeBlinkScore.toFixed(3)),
       yawn_detected: state.yawnDetected,
+      jaw_open_score: Number(state.jawOpenScore.toFixed(3)),
     },
     computer: {
       screen_shared: state.screenShared,
@@ -371,6 +443,34 @@ async function startMonitoring() {
   }
 }
 
+async function startCameraTest() {
+  elements.cameraTest.disabled = true;
+  elements.start.disabled = true;
+  elements.cameraTest.textContent = "正在授权…";
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前浏览器不支持摄像头");
+    state.cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+      audio: false,
+    });
+    elements.cameraVideo.srcObject = state.cameraStream;
+    document.querySelector(".camera-panel .video-wrap").classList.add("live");
+    await loadFaceModel();
+    state.running = true;
+    setConnection("camera", "测试中，本地分析", "ok");
+    requestAnimationFrame(faceLoop);
+    setInterval(emitSample, 5000);
+    elements.cameraTest.textContent = "摄像头测试中";
+    addEvent("CAMERA_TEST_STARTED", { raw_video_uploaded: false });
+  } catch (error) {
+    elements.cameraTest.disabled = false;
+    elements.start.disabled = false;
+    elements.cameraTest.textContent = "重新测试摄像头";
+    setConnection("camera", "授权未完成", "bad");
+    addEvent("CAMERA_TEST_ERROR", { message: error.message });
+  }
+}
+
 async function clarifyTask() {
   elements.clarify.disabled = true;
   try {
@@ -421,6 +521,7 @@ async function classifyContext() {
 }
 
 elements.start.addEventListener("click", startMonitoring);
+elements.cameraTest.addEventListener("click", startCameraTest);
 elements.clarify.addEventListener("click", clarifyTask);
 elements.classify.addEventListener("click", classifyContext);
 loadFaceModel();

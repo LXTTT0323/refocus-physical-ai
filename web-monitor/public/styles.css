@@ -41,7 +41,10 @@ h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
 label { display: block; margin: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 700; }
 input, select { width: 100%; min-height: 48px; color: var(--text); border: 1px solid var(--line); border-radius: 12px; background: rgba(3,14,11,.72); padding: 0 14px; outline: none; }
 input:focus, select:focus { border-color: rgba(124,241,188,.6); box-shadow: 0 0 0 3px rgba(124,241,188,.08); }
-.primary, .context-form button, .clarification-row button { min-height: 48px; border: 0; border-radius: 12px; padding: 0 20px; font-weight: 800; color: #042016; background: var(--green); }
+.primary, .secondary, .context-form button, .clarification-row button { min-height: 48px; border-radius: 12px; padding: 0 20px; font-weight: 800; }
+.primary, .context-form button, .clarification-row button { border: 0; color: #042016; background: var(--green); }
+.secondary { color: var(--green); border: 1px solid rgba(124,241,188,.35); background: rgba(124,241,188,.06); }
+.launch-actions { display: flex; gap: 8px; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 .permission-note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; }
 .clarification-card { margin-top: 16px; padding: 20px; border-radius: 18px; border-color: rgba(243,214,109,.28); }
@@ -73,6 +76,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .metric-grid div { min-width: 0; padding: 12px; border-radius: 12px; background: rgba(5,18,15,.72); }
 .metric-grid span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 5px; }
 .metric-grid strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.camera-recording-rule { display: flex; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid rgba(124,241,188,.14); border-radius: 12px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.camera-recording-rule b { color: var(--green); white-space: nowrap; }
 .screen-metrics { grid-template-columns: 1.4fr .8fr .8fr; }
 .context-form { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .context-form p { color: var(--muted); font-size: 12px; line-height: 1.55; }
@@ -97,6 +102,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 @media (max-width: 900px) {
   .topbar { flex-direction: column; }
   .launch-card { grid-template-columns: 1fr; }
+  .launch-actions { flex-direction: column; }
   .monitor-grid, .bottom-grid { grid-template-columns: 1fr; }
   .status-strip { grid-template-columns: 1fr 1fr; }
   .context-fields { grid-template-columns: 1fr; }
