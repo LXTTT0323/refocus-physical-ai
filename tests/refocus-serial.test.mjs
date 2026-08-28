@@ -23,8 +23,8 @@ test("rejects unsupported protocol frames", () => {
 });
 
 test("maps focus lights to C board V2 commands", () => {
-  assert.deepEqual(serialCommandForLight("yellow"), { type: "set_led", rgb: "FFB000", mode: "solid" });
-  assert.deepEqual(serialCommandForLight("green"), { type: "set_led", rgb: "00FF00", mode: "solid" });
-  assert.deepEqual(serialCommandForLight("red"), { type: "set_led", rgb: "FF0000", mode: "slow_blink" });
+  assert.deepEqual(serialCommandForLight("yellow"), { type: "set_led", rgb: "201600", mode: "solid" });
+  assert.deepEqual(serialCommandForLight("green"), { type: "set_led", rgb: "002000", mode: "solid" });
+  assert.deepEqual(serialCommandForLight("red"), { type: "set_led", rgb: "200000", mode: "solid" });
   assert.equal(encodeRefocusSerialCommand({ type: "get_state" }), '{"type":"get_state"}\n');
 });
