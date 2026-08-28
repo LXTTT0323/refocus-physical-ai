@@ -14,7 +14,7 @@
 
 | 实物位置 | 设备读数 | 本地灯光 | Bridge 语义 |
 | --- | --- | --- | --- |
-| 原位 | `session_active=false` | 熄灭 | 活跃 Session 中映射为 `SESSION_END` |
+| 原位 | `session_active=false` | 熄灭 | 活跃 Session 中映射为 `SESSION_END_REQUESTED`，进入语音复盘 |
 | 保持在前方 | `session_active=true` | 低亮绿色 | IDLE 映射为 `SESSION_START`；恢复等待态映射为 `SESSION_RESUMED` |
 | 中间过渡区域 | 不改变 | 保持原状态 | 不产生事件 |
 
@@ -56,7 +56,7 @@ idf.py -p COM<实际串口> flash monitor
 2. ROROLEE 重新连接设备 `REFOCUS_C_V1`。
 3. 向前拨并保持：约 350ms 后灯变低亮绿色，日志出现 `SESSION_START`。
 4. ROROLEE/设备能力中应出现 `session_active=true` 和 `led0`。
-5. 拨回原位：约 600ms 后灯熄灭，日志出现 `SESSION_END` 和 `session_active=false`。
+5. 拨回原位：约 600ms 后灯熄灭，日志出现 `session_active=false`；Bridge 映射为 `SESSION_END_REQUESTED`，依次采集两段语音，转写完成后再生成总结。
 6. 连续重复三次，不允许出现一次动作触发多次事件。
 
 若向前无反应、向后才触发，把 `config.h` 中 `REFOCUS_FORWARD_IS_HIGH` 从 `1` 改为 `0` 后重新编译。
@@ -66,4 +66,3 @@ idf.py -p COM<实际串口> flash monitor
 - 本机当前有 PlatformIO，但没有检测到 ESP-IDF 的 `idf.py`，因此代码尚未在本机完成 ESP-IDF 编译和真机烧录。
 - ROROLEE 是否把 `session_active` 自动转成 Agent Turn 需要真机观察；设备端采用官方通用 I/O manifest/reading 协议，不使用未定义的 JSON 包。
 - RGB 的 Agent 下行端点为官方合成的 `led0`；本地在位置变化时先即时亮灯/熄灯，云端仍可覆盖颜色。
-

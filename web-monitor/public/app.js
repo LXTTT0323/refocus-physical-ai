@@ -113,6 +113,8 @@ const state = {
   voiceButton: null,
   voiceChunks: [],
   voiceStream: null,
+  hardwareEventId: 0,
+  hardwarePollTimer: null,
 };
 
 function setConnection(name, text, kind = "") {
@@ -139,7 +141,7 @@ function escapeHtml(value) {
 }
 
 async function api(path, body) {
-  const response = await fetch(path, {
+  const response = await fetch(path, body === undefined ? undefined : {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -719,13 +721,47 @@ function toggleVisualClassification() {
   }
 }
 
-function openFeedback() {
+function openFeedback(trigger = "web_button") {
   if (!state.localSessionId) {
     addEvent("END_ERROR", { message: "请先开始完整监测" });
     return;
   }
+  stopMonitoring();
   elements.feedbackCard.classList.remove("hidden");
+  elements.voiceStatus.textContent = trigger === "joystick_returned_to_origin"
+    ? "检测到摇杆已回原位，专注记录已停止。请依次回答两个问题；板载麦克风接入后会自动填入。"
+    : "专注记录已停止。请依次回答两个问题。";
+  addEvent("SESSION_END_REQUESTED", { trigger, next_state: "REFLECTING" });
   elements.feedbackCard.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function pollHardwareEvents() {
+  try {
+    const response = await api(`/api/hardware/events?after=${state.hardwareEventId}`);
+    for (const event of response.events) {
+      state.hardwareEventId = Math.max(state.hardwareEventId, event.id);
+      if (event.type === "SESSION_END_REQUESTED" && state.localSessionId) {
+        openFeedback(event.payload.trigger);
+      }
+      if (
+        event.type === "REFLECTION_TRANSCRIPT" &&
+        event.payload.local_session_id === state.localSessionId
+      ) {
+        const target = event.payload.question === "completion_report"
+          ? elements.completionFeedback
+          : elements.experienceFeedback;
+        target.value = event.payload.text;
+        elements.voiceStatus.textContent = `已收到板载麦克风的${event.payload.question === "completion_report" ? "第一段" : "第二段"}回答。`;
+        if (elements.completionFeedback.value.trim() && elements.experienceFeedback.value.trim()) {
+          await generateSessionSummary();
+        }
+      }
+    }
+  } catch (error) {
+    console.debug("hardware event poll unavailable", error);
+  } finally {
+    state.hardwarePollTimer = setTimeout(pollHardwareEvents, 750);
+  }
 }
 
 function startVoiceAnswer(targetId, button) {
@@ -896,10 +932,11 @@ elements.cameraTest.addEventListener("click", startCameraTest);
 elements.clarify.addEventListener("click", clarifyTask);
 elements.classify.addEventListener("click", classifyContext);
 elements.visualClassify.addEventListener("click", toggleVisualClassification);
-elements.end.addEventListener("click", openFeedback);
+elements.end.addEventListener("click", () => openFeedback("web_button"));
 elements.generateSummary.addEventListener("click", generateSessionSummary);
 for (const button of document.querySelectorAll("[data-voice-target]")) {
   button.addEventListener("click", () => startVoiceAnswer(button.dataset.voiceTarget, button));
 }
 loadFaceModel();
 loadVisualProvider();
+pollHardwareEvents();

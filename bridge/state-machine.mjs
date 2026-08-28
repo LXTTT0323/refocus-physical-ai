@@ -4,6 +4,7 @@ export const STATES = Object.freeze({
   FOCUSING: "FOCUSING",
   INTERRUPTED: "INTERRUPTED",
   RESTORING: "RESTORING",
+  REFLECTING: "REFLECTING",
   ENDED: "ENDED",
 });
 
@@ -12,15 +13,16 @@ const transitions = new Map([
   [`${STATES.SETUP}:TASK_CLARIFICATION`, STATES.SETUP],
   [`${STATES.SETUP}:ACTIVITY_SAMPLE`, STATES.SETUP],
   [`${STATES.SETUP}:FOCUS_READY`, STATES.FOCUSING],
-  [`${STATES.SETUP}:SESSION_END`, STATES.ENDED],
+  [`${STATES.SETUP}:SESSION_END_REQUESTED`, STATES.REFLECTING],
   [`${STATES.FOCUSING}:ACTIVITY_SAMPLE`, STATES.FOCUSING],
   [`${STATES.FOCUSING}:PROGRESS_UPDATE`, STATES.FOCUSING],
   [`${STATES.FOCUSING}:INTERRUPTION_DETECTED`, STATES.INTERRUPTED],
   [`${STATES.INTERRUPTED}:RETURN_DETECTED`, STATES.RESTORING],
   [`${STATES.RESTORING}:SESSION_RESUMED`, STATES.FOCUSING],
-  [`${STATES.FOCUSING}:SESSION_END`, STATES.ENDED],
-  [`${STATES.INTERRUPTED}:SESSION_END`, STATES.ENDED],
-  [`${STATES.RESTORING}:SESSION_END`, STATES.ENDED],
+  [`${STATES.FOCUSING}:SESSION_END_REQUESTED`, STATES.REFLECTING],
+  [`${STATES.INTERRUPTED}:SESSION_END_REQUESTED`, STATES.REFLECTING],
+  [`${STATES.RESTORING}:SESSION_END_REQUESTED`, STATES.REFLECTING],
+  [`${STATES.REFLECTING}:SESSION_FEEDBACK_COMPLETED`, STATES.ENDED],
 ]);
 
 function assertEnvelope(event) {
@@ -93,6 +95,14 @@ function assertSemanticGuards(event) {
     }
     if (!(Number(event.payload.stable_seconds) >= 5)) {
       throw new Error("FOCUS_READY requires stable_seconds >= 5");
+    }
+  }
+
+  if (event.event === "SESSION_FEEDBACK_COMPLETED") {
+    for (const field of ["completion_report", "focus_experience"]) {
+      if (typeof event.payload[field] !== "string" || !event.payload[field].trim()) {
+        throw new Error(`SESSION_FEEDBACK_COMPLETED requires a non-empty ${field}`);
+      }
     }
   }
 }

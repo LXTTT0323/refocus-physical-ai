@@ -51,6 +51,32 @@ test("monitor serves the local UI and keeps Agent Stack secrets server-side", as
     const audio = await audioResponse.json();
     assert.equal(audio.text, "语音测试成功");
 
+    const joystickResponse = await fetch(`${baseUrl}/api/hardware/session-state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: false, sequence: 3 }),
+    });
+    assert.equal(joystickResponse.status, 202);
+    const hardwareEvents = await fetch(`${baseUrl}/api/hardware/events?after=0`).then((item) => item.json());
+    assert.equal(hardwareEvents.events[0].type, "SESSION_END_REQUESTED");
+    assert.equal(hardwareEvents.events[0].payload.trigger, "joystick_returned_to_origin");
+
+    const reflectionResponse = await fetch(`${baseUrl}/api/hardware/reflection-text`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        local_session_id: started.local_session_id,
+        question: "completion_report",
+        text: "板载麦克风转写结果",
+      }),
+    });
+    assert.equal(reflectionResponse.status, 202);
+    const reflectionEvents = await fetch(
+      `${baseUrl}/api/hardware/events?after=${hardwareEvents.latest_id}`,
+    ).then((item) => item.json());
+    assert.equal(reflectionEvents.events[0].type, "REFLECTION_TRANSCRIPT");
+    assert.equal(reflectionEvents.events[0].payload.source, "board_microphone");
+
     const contextResponse = await fetch(`${baseUrl}/api/context/relevance`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

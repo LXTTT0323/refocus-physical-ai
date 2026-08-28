@@ -28,7 +28,28 @@ test("happy path reaches ENDED", () => {
   const machine = new RefocusStateMachine();
   for (const item of happyPath) machine.apply(item);
   assert.equal(machine.state, STATES.ENDED);
-  assert.equal(machine.history.length, 8);
+  assert.equal(machine.history.length, 9);
+});
+
+test("returning the joystick to origin enters reflection before ending", () => {
+  const machine = new RefocusStateMachine();
+  machine.apply(event(1, "SESSION_START", { goal: "写 PPT", focus_minutes: 30 }));
+  const requested = machine.apply(event(2, "SESSION_END_REQUESTED", {
+    trigger: "joystick_returned_to_origin",
+  }));
+  assert.equal(requested.to, STATES.REFLECTING);
+  assert.throws(
+    () => machine.apply(event(3, "SESSION_FEEDBACK_COMPLETED", {
+      completion_report: "",
+      focus_experience: "还不错",
+    })),
+    /completion_report/,
+  );
+  machine.apply(event(3, "SESSION_FEEDBACK_COMPLETED", {
+    completion_report: "完成初稿",
+    focus_experience: "整体顺畅",
+  }));
+  assert.equal(machine.state, STATES.ENDED);
 });
 
 test("an interruption cannot also mean that the user returned", () => {

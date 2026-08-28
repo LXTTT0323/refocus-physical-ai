@@ -28,6 +28,7 @@ test("bridge completes the simulated RE:FOCUS loop", async () => {
   assert.ok(bridge.effects.some(({ type }) => type === "CHECKPOINT_READY"));
   assert.ok(bridge.effects.some(({ type }) => type === "RESTORE_READY"));
   assert.ok(bridge.effects.some(({ type }) => type === "SUMMARY_READY"));
+  assert.ok(bridge.effects.some(({ type }) => type === "REFLECTION_REQUIRED"));
 });
 
 test("activity samples and progress updates never call the coordinator directly", async () => {

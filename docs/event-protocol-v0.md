@@ -104,11 +104,24 @@
 
 状态变化：`INTERRUPTED → RESTORING`。
 
-### `SESSION_END`
+### `SESSION_END_REQUESTED`
 
-第一版仅由用户主动结束；离席过久不能直接替用户结束，以免误判。
+仅由用户主动结束；离席过久不能直接替用户结束，以免误判。正式硬件入口是摇杆从前位拨回原位；网页按钮只作为开发调试备用。
 
-状态变化：`FOCUSING | INTERRUPTED | RESTORING → ENDED`。
+状态变化：`SETUP | FOCUSING | INTERRUPTED | RESTORING → REFLECTING`。
+
+进入 `REFLECTING` 后停止专注判定，系统通过麦克风依次询问：
+
+1. 这次完成了什么？任务完成到什么程度？
+2. 刚才的专注感受怎么样？最顺或最卡的地方是什么？
+
+音频采集属于硬件/本地 Bridge 层。Skill 只接收语音转写后的文本，因此从网页麦克风切换到 C 板麦克风不会改变 `session-summary` Skill。
+
+### `SESSION_FEEDBACK_COMPLETED`
+
+两段回答均完成转写后产生，载荷包含 `completion_report` 与 `focus_experience`。此时才调用 `session-summary` 并完成 Session。
+
+状态变化：`REFLECTING → ENDED`。
 
 ## 系统结果事件
 
@@ -135,7 +148,8 @@ SESSION_START
 → INTERRUPTION_DETECTED
 → RETURN_DETECTED
 → SESSION_RESUMED
-→ SESSION_END
+→ SESSION_END_REQUESTED
+→ SESSION_FEEDBACK_COMPLETED
 ```
 
 完整示例见 [`protocol/examples/happy-path.jsonl`](../protocol/examples/happy-path.jsonl)。

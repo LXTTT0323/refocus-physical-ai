@@ -91,6 +91,14 @@ export function createMonitorServer({
     visualProvider === "openai" ? OpenAIVisualObserver.fromEnvironment() : null
   );
   const externalAudioTranscriber = audioTranscriber ?? OpenAIAudioTranscriber.fromEnvironment();
+  const hardwareEvents = [];
+  let nextHardwareEventId = 1;
+  const enqueueHardwareEvent = (type, payload = {}) => {
+    const item = { id: nextHardwareEventId++, type, payload, timestamp: new Date().toISOString() };
+    hardwareEvents.push(item);
+    if (hardwareEvents.length > 100) hardwareEvents.shift();
+    return item;
+  };
 
   return createServer(async (request, response) => {
     response.setHeader("Permissions-Policy", "camera=(self), display-capture=(self), microphone=(self)");
@@ -118,6 +126,49 @@ export function createMonitorServer({
         });
       }
 
+      if (request.method === "GET" && url.pathname === "/api/hardware/events") {
+        const after = Math.max(0, Number(url.searchParams.get("after") ?? 0));
+        return json(response, 200, {
+          events: hardwareEvents.filter((item) => item.id > after),
+          latest_id: hardwareEvents.at(-1)?.id ?? after,
+        });
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/hardware/session-state") {
+        const body = await readJson(request);
+        if (typeof body.active !== "boolean") {
+          return json(response, 400, { error: "active must be boolean" });
+        }
+        const event = enqueueHardwareEvent(
+          body.active ? "SESSION_START_REQUESTED" : "SESSION_END_REQUESTED",
+          {
+            trigger: body.active ? "joystick_forward" : "joystick_returned_to_origin",
+            sequence: Number.isInteger(body.sequence) ? body.sequence : null,
+          },
+        );
+        return json(response, 202, { accepted: true, event });
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/hardware/reflection-text") {
+        const body = await readJson(request);
+        if (!sessions.has(body.local_session_id)) {
+          return json(response, 404, { error: "monitor session not found" });
+        }
+        if (!new Set(["completion_report", "focus_experience"]).has(body.question)) {
+          return json(response, 400, { error: "unknown reflection question" });
+        }
+        if (typeof body.text !== "string" || !body.text.trim()) {
+          return json(response, 400, { error: "reflection text is required" });
+        }
+        const event = enqueueHardwareEvent("REFLECTION_TRANSCRIPT", {
+          local_session_id: body.local_session_id,
+          question: body.question,
+          text: body.text.trim(),
+          source: "board_microphone",
+        });
+        return json(response, 202, { accepted: true, event });
+      }
+
       if (request.method === "POST" && url.pathname === "/api/audio/transcribe") {
         if (!externalAudioTranscriber) return json(response, 503, { error: "audio transcription is not configured" });
         const contentType = String(request.headers["content-type"] ?? "").split(";")[0];
@@ -127,6 +178,22 @@ export function createMonitorServer({
         const audio = await readBytes(request, 5 * 1024 * 1024);
         if (!audio.length) return json(response, 400, { error: "audio is required" });
         const result = await externalAudioTranscriber.transcribe(audio, { contentType });
+        const hardwareQuestion = String(request.headers["x-refocus-question"] ?? "");
+        const hardwareSessionId = String(request.headers["x-refocus-session-id"] ?? "");
+        if (hardwareQuestion || hardwareSessionId) {
+          if (!sessions.has(hardwareSessionId)) {
+            return json(response, 404, { error: "monitor session not found" });
+          }
+          if (!new Set(["completion_report", "focus_experience"]).has(hardwareQuestion)) {
+            return json(response, 400, { error: "unknown reflection question" });
+          }
+          enqueueHardwareEvent("REFLECTION_TRANSCRIPT", {
+            local_session_id: hardwareSessionId,
+            question: hardwareQuestion,
+            text: result.text,
+            source: "board_microphone",
+          });
+        }
         return json(response, 201, result);
       }
 

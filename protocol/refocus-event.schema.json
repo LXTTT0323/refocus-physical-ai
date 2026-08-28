@@ -11,7 +11,8 @@
     { "$ref": "#/$defs/interruptionDetected" },
     { "$ref": "#/$defs/returnDetected" },
     { "$ref": "#/$defs/sessionResumed" },
-    { "$ref": "#/$defs/sessionEnd" }
+    { "$ref": "#/$defs/sessionEndRequested" },
+    { "$ref": "#/$defs/sessionFeedbackCompleted" }
   ],
   "$defs": {
     "base": {
@@ -230,18 +231,37 @@
         }
       ]
     },
-    "sessionEnd": {
+    "sessionEndRequested": {
       "allOf": [
         { "$ref": "#/$defs/base" },
         {
           "properties": {
-            "event": { "const": "SESSION_END" },
+            "event": { "const": "SESSION_END_REQUESTED" },
             "payload": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["reason"],
+              "required": ["trigger"],
               "properties": {
-                "reason": { "enum": ["user_finished", "user_cancelled"] }
+                "trigger": { "enum": ["joystick_returned_to_origin", "web_button"] }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "sessionFeedbackCompleted": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "properties": {
+            "event": { "const": "SESSION_FEEDBACK_COMPLETED" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["completion_report", "focus_experience"],
+              "properties": {
+                "completion_report": { "type": "string", "minLength": 1, "maxLength": 1000 },
+                "focus_experience": { "type": "string", "minLength": 1, "maxLength": 1000 }
               }
             }
           }
