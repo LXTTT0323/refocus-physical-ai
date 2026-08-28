@@ -150,6 +150,11 @@ test("real coordinator adapter creates one Session and parses NDJSON Turns", asy
   assert.equal(requests.length, 5);
   assert.equal(coordinator.trace.length, 4);
   assert.ok(coordinator.trace.every(({ status }) => status === "succeeded"));
+  const setupPrompt = JSON.parse(requests[1].options.body).input.text;
+  const summaryPrompt = JSON.parse(requests[4].options.body).input.text;
+  assert.match(setupPrompt, /必须先读取并遵循已安装的 task-setup Skill/);
+  assert.match(summaryPrompt, /必须先读取并遵循已安装的 session-summary Skill/);
+  assert.doesNotMatch(setupPrompt, /不得调用工具或 Skill，不得使用 Markdown/);
 });
 
 test("task setup can request and consume one clarification in the same Session", async () => {
