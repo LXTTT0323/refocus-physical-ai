@@ -37,7 +37,7 @@
           <button id="startButton" class="primary">开始完整监测</button>
           <button id="endButton" class="danger hidden">结束并生成总结</button>
         </div>
-        <p class="permission-note">首次点击会出现两个系统授权框：摄像头，以及你选择共享的屏幕或任务窗口。</p>
+        <p class="permission-note">首次点击会出现两个系统授权框：摄像头与屏幕共享。屏幕共享时请选择“整个屏幕”；选择单个窗口或标签页将提示重新选择。</p>
       </section>
 
       <section id="clarificationCard" class="clarification-card hidden">
@@ -134,7 +134,7 @@
           <div class="video-wrap screen-wrap">
             <video id="screenVideo" autoplay playsinline muted></video>
             <canvas id="screenCanvas"></canvas>
-            <div class="video-placeholder">选择整个屏幕或当前任务窗口</div>
+            <div class="video-placeholder">默认监控整个屏幕</div>
           </div>
           <div class="metric-grid screen-metrics">
             <div><span>共享来源</span><strong id="screenLabel">—</strong></div>
@@ -154,7 +154,7 @@
               <div>
                 <label for="visualSource">自动视觉来源</label>
                 <select id="visualSource">
-                  <option value="screen_share">共享屏幕页面（推荐）</option>
+                  <option value="screen_share">整个共享屏幕（默认）</option>
                   <option value="camera_page">摄像头拍到的页面</option>
                 </select>
               </div>

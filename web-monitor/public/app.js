@@ -535,10 +535,15 @@ async function startMonitoring() {
     }
 
     const displayPromise = navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: 5, max: 10 } },
+      video: {
+        displaySurface: "monitor",
+        frameRate: { ideal: 5, max: 10 },
+      },
       audio: false,
       selfBrowserSurface: "exclude",
       surfaceSwitching: "include",
+      monitorTypeSurfaces: "include",
+      preferCurrentTab: false,
     });
     const cameraPromise = navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
@@ -554,8 +559,18 @@ async function startMonitoring() {
     setConnection("camera", "已授权，本地分析", "ok");
     setConnection("screen", "正在共享", "ok");
     const screenTrack = state.screenStream.getVideoTracks()[0];
-    elements.screenLabel.textContent = screenTrack.label || "已选择的屏幕";
-    elements.activeApp.value ||= screenTrack.label || "";
+    const displaySurface = screenTrack.getSettings?.().displaySurface;
+    if (displaySurface && displaySurface !== "monitor") {
+      for (const stream of [state.screenStream, state.cameraStream]) {
+        for (const track of stream?.getTracks?.() ?? []) track.stop();
+      }
+      state.screenStream = null;
+      state.cameraStream = null;
+      state.screenShared = false;
+      throw new Error("请选择“整个屏幕”，不要选择单个窗口或浏览器标签页");
+    }
+    elements.screenLabel.textContent = screenTrack.label || "整个屏幕";
+    setConnection("screen", "正在共享整个屏幕", "ok");
     screenTrack.addEventListener("ended", () => {
       state.screenShared = false;
       setConnection("screen", "共享已停止", "bad");
@@ -571,7 +586,11 @@ async function startMonitoring() {
     rememberTimer(setInterval(updateReadyGate, 500));
     elements.end.classList.remove("hidden");
     elements.start.textContent = "监测运行中";
-    addEvent("MONITORING_STARTED", { camera: true, screen: true });
+    addEvent("MONITORING_STARTED", {
+      camera: true,
+      screen: true,
+      display_surface: displaySurface || "monitor_requested",
+    });
   } catch (error) {
     elements.start.disabled = false;
     elements.start.textContent = "重新开始";
