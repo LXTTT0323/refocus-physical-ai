@@ -18,27 +18,41 @@
         <div class="privacy-pill"><i></i> 不上传连续视频</div>
       </header>
 
-      <section class="launch-card">
+      <nav class="session-steps" aria-label="专注流程">
+        <div data-step="start" class="active"><span>1</span><b>开始</b><small>说出或输入任务</small></div>
+        <i></i>
+        <div data-step="running"><span>2</span><b>专注中</b><small>灯亮并持续监测</small></div>
+        <i></i>
+        <div data-step="reflection"><span>3</span><b>结束</b><small>选择是否记入</small></div>
+      </nav>
+
+      <section id="startView" class="launch-card">
         <div class="goal-field">
-          <label for="goal">这次要完成什么？</label>
-          <input id="goal" value="完成 RE:FOCUS 比赛路演 PPT 的前三页" maxlength="500" />
-        </div>
-        <div class="duration-field">
-          <label for="minutes">计划时长</label>
-          <select id="minutes">
-            <option value="25">25 分钟</option>
-            <option value="45" selected>45 分钟</option>
-            <option value="60">60 分钟</option>
-          </select>
+          <label for="goal">这一次，你想专注完成什么？</label>
+          <div class="goal-input-row">
+            <input id="goal" value="完成 RE:FOCUS 比赛路演 PPT 的前三页" maxlength="500" />
+            <button id="goalVoiceButton" class="voice-button" data-voice-target="goal">🎙 语音输入</button>
+          </div>
+          <p id="goalVoiceStatus" class="inline-status">可以直接打字，也可以点麦克风说出任务。</p>
         </div>
         <div class="launch-actions">
           <button id="hardwareConnectButton" class="secondary">连接 C 板</button>
-          <button id="taskTestButton" class="secondary">仅测试任务理解</button>
-          <button id="cameraTestButton" class="secondary">仅测试摄像头</button>
-          <button id="startButton" class="primary">开始完整监测</button>
-          <button id="endButton" class="danger hidden">结束并生成总结</button>
+          <button id="startButton" class="primary start-session-button">开始专注并授权</button>
         </div>
-        <p class="permission-note">首次点击会出现两个系统授权框：摄像头与屏幕共享。屏幕共享时请选择“整个屏幕”；选择单个窗口或标签页将提示重新选择。</p>
+        <p class="permission-note">点击后会亮灯并依次请求摄像头、屏幕共享权限。共享时请选择“整个屏幕”。</p>
+        <details class="advanced-tools">
+          <summary>开发测试工具</summary>
+          <div>
+            <button id="taskTestButton" class="secondary">仅测试任务理解</button>
+            <button id="cameraTestButton" class="secondary">仅测试摄像头</button>
+          </div>
+        </details>
+      </section>
+
+      <section id="runningBar" class="running-bar hidden">
+        <div><p class="eyebrow">SESSION RUNNING</p><h2>正在专注：<span id="runningGoal">—</span></h2></div>
+        <div class="running-indicator"><i></i><span>灯已亮 · 监测运行中</span></div>
+        <button id="endButton" class="danger">结束本次专注</button>
       </section>
 
       <section id="clarificationCard" class="clarification-card hidden">
@@ -52,21 +66,24 @@
 
       <section id="feedbackCard" class="feedback-card hidden">
         <div class="panel-head">
-          <div><p class="eyebrow">SESSION REFLECTION</p><h2>结束前，简单回答两个问题</h2></div>
-          <span class="state-badge neutral">支持语音</span>
+          <div><p class="eyebrow">SESSION REFLECTION</p><h2>本次专注已经结束</h2></div>
+          <span class="state-badge good">灯已熄灭</span>
         </div>
-        <div class="feedback-grid">
-          <label>1. 这次完成了什么？
-            <textarea id="completionFeedback" maxlength="800" placeholder="例如：完成了前三页初稿。"></textarea>
-          </label>
-          <button class="voice-button" data-voice-target="completionFeedback">🎙 语音回答第一个问题</button>
-          <label>2. 刚才专注感受怎么样？
+        <div class="reflection-question required-question">
+          <div><b>1. 是否将这一次专注计入记录？</b><span>必填</span></div>
+          <div class="record-choice">
+            <label><input type="radio" name="recordSession" value="yes" /> 是，计入本次专注</label>
+            <label><input type="radio" name="recordSession" value="no" /> 否，不计入记录</label>
+          </div>
+        </div>
+        <div class="feedback-grid optional-question">
+          <label>2. 刚才的专注感受如何？ <em>选填</em>
             <textarea id="experienceFeedback" maxlength="800" placeholder="例如：整体比较专注，后半段有一点分心。"></textarea>
           </label>
-          <button class="voice-button" data-voice-target="experienceFeedback">🎙 语音回答第二个问题</button>
+          <button class="voice-button" data-voice-target="experienceFeedback">🎙 语音输入感受</button>
         </div>
-        <p id="voiceStatus" class="permission-note">优先使用浏览器语音识别；不支持时录制单段音频并发送给 OpenAI 转文字，不保存音频。也可以直接输入。</p>
-        <button id="generateSummaryButton" class="primary summary-button">提交回答并生成总结</button>
+        <p id="voiceStatus" class="permission-note">先选择是否计入；感受可以语音输入、打字或留空。</p>
+        <button id="generateSummaryButton" class="primary summary-button">确认并完成</button>
       </section>
 
       <section id="summaryCard" class="summary-card hidden">
@@ -80,8 +97,10 @@
           <div><span>中断</span><strong id="summaryInterruptions">—</strong></div>
           <div><span>下一步</span><strong id="summaryNextAction">—</strong></div>
         </div>
+        <button id="newSessionButton" class="secondary new-session-button">开始下一次专注</button>
       </section>
 
+      <div id="runtimeView" class="hidden">
       <section class="status-strip" aria-label="连接状态">
         <div data-status="hardware"><span>C 板硬件</span><b>正在检测</b></div>
         <div data-status="camera"><span>摄像头</span><b>未授权</b></div>
@@ -185,6 +204,7 @@
           <ol id="eventList"><li>等待监测开始</li></ol>
         </article>
       </section>
+      </div>
     </main>
     <script type="module" src="/app.js"></script>
   </body>

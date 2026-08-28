@@ -14,7 +14,11 @@ const webSerialMode = new URLSearchParams(location.search).get("webserial") === 
 
 const elements = {
   goal: $("#goal"),
-  minutes: $("#minutes"),
+  goalVoiceStatus: $("#goalVoiceStatus"),
+  startView: $("#startView"),
+  runningBar: $("#runningBar"),
+  runningGoal: $("#runningGoal"),
+  runtimeView: $("#runtimeView"),
   start: $("#startButton"),
   hardwareConnect: $("#hardwareConnectButton"),
   end: $("#endButton"),
@@ -56,7 +60,6 @@ const elements = {
   contractCriteria: $("#contractCriteria"),
   contractHints: $("#contractHints"),
   feedbackCard: $("#feedbackCard"),
-  completionFeedback: $("#completionFeedback"),
   experienceFeedback: $("#experienceFeedback"),
   voiceStatus: $("#voiceStatus"),
   generateSummary: $("#generateSummaryButton"),
@@ -66,9 +69,11 @@ const elements = {
   summaryMinutes: $("#summaryMinutes"),
   summaryInterruptions: $("#summaryInterruptions"),
   summaryNextAction: $("#summaryNextAction"),
+  newSession: $("#newSessionButton"),
 };
 
 const state = {
+  phase: "start",
   running: false,
   faceLandmarker: null,
   localSessionId: null,
@@ -111,6 +116,7 @@ const state = {
   headDirectionFilter: new HeadDirectionFilter(),
   focusPolicy: new FocusSignalPolicy(),
   sessionStartedAt: 0,
+  sessionEndedAt: 0,
   lastLight: "yellow",
   interruptionStartedAt: 0,
   interruptionCount: 0,
@@ -134,6 +140,30 @@ const state = {
   hardwareSequence: 0,
   hardwareLastLight: null,
 };
+
+function setSessionPhase(phase) {
+  state.phase = phase;
+  elements.startView.classList.toggle("hidden", phase !== "start");
+  elements.runningBar.classList.toggle("hidden", phase !== "running");
+  elements.runtimeView.classList.toggle("hidden", phase !== "running");
+  elements.feedbackCard.classList.toggle("hidden", phase !== "reflection");
+  elements.summaryCard.classList.toggle("hidden", phase !== "summary");
+  for (const step of document.querySelectorAll("[data-step]")) {
+    const order = { start: 0, running: 1, reflection: 2 };
+    const current = phase === "summary" ? 3 : order[phase];
+    const item = order[step.dataset.step];
+    step.classList.toggle("active", item === current);
+    step.classList.toggle("complete", item < current);
+  }
+  const target = phase === "running"
+    ? elements.runningBar
+    : phase === "reflection"
+      ? elements.feedbackCard
+      : phase === "summary"
+        ? elements.summaryCard
+        : elements.startView;
+  target?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 function setConnection(name, text, kind = "") {
   const node = document.querySelector(`[data-status="${name}"]`);
@@ -621,7 +651,7 @@ async function startAgentSession() {
   setConnection("agent", "连接中", "warn");
   const result = await api("/api/session/start", {
     goal: elements.goal.value,
-    focus_minutes: Number(elements.minutes.value),
+    focus_minutes: null,
   });
   state.localSessionId = result.local_session_id;
   state.coordinatorSessionId = result.coordinator_session_id;
@@ -653,55 +683,32 @@ async function activateHardwareSession(trigger = "physical_button") {
   state.hardwareSessionActive = true;
   state.sessionStartedAt = Date.now();
   elements.start.disabled = true;
-  elements.start.textContent = "Session 进行中";
-  elements.end.classList.remove("hidden");
-  setConnection("hardware", "实体按钮已开始 · 灯亮", "ok");
+  elements.start.textContent = "正在专注";
+  elements.runningGoal.textContent = elements.goal.value.trim();
+  setConnection("hardware", hardwareMode ? "Session 已开始 · 灯亮" : "未启用", hardwareMode ? "ok" : "");
   await setHardwareLed(true, "session_active");
   addEvent("SESSION_STARTED", { trigger });
+  setSessionPhase("running");
+  if (!state.autoVisual && state.taskContract?.status === "ready") toggleVisualClassification();
   updateReadyGate();
 }
 
 async function finishHardwareSession(trigger = "physical_button") {
   if (!state.hardwareSessionActive || !state.localSessionId) return;
   state.hardwareSessionActive = false;
-  const durationSeconds = Math.max(0, Math.round((Date.now() - state.sessionStartedAt) / 1000));
-  try {
-    const response = await api("/api/session/stop", {
-      ...sessionEnvelope(),
-      duration_seconds: durationSeconds,
-      interruptions: interruptionSummary(),
-      end_reason: trigger,
-    });
-    const history = JSON.parse(localStorage.getItem("refocus_session_history") || "[]");
-    history.unshift(response.record);
-    localStorage.setItem("refocus_session_history", JSON.stringify(history.slice(0, 20)));
-    await setHardwareLed(false, "session_ended");
-    stopMonitoring();
-    elements.end.classList.add("hidden");
-    elements.feedbackCard.classList.add("hidden");
-    elements.summaryCard.classList.remove("hidden");
-    elements.summaryOutcome.textContent = "已记录";
-    elements.summaryOutcome.className = "state-badge good";
-    elements.summaryText.textContent = "实体按钮结束，本次专注记录已保存。";
-    elements.summaryMinutes.textContent = `${Math.max(1, Math.round(durationSeconds / 60))} 分钟`;
-    elements.summaryInterruptions.textContent = `${response.record.interruptions.count} 次 · ${response.record.interruptions.total_seconds} 秒`;
-    elements.summaryNextAction.textContent = "可重新准备下一次 Session";
-    elements.start.disabled = false;
-    elements.start.textContent = "重新准备检测";
-    state.hardwarePrepared = false;
-    setConnection("hardware", "Session 已结束 · 灯灭", "ok");
-    addEvent("SESSION_RECORDED", { trigger, duration_seconds: durationSeconds });
-    elements.summaryCard.scrollIntoView({ behavior: "smooth", block: "start" });
-  } catch (error) {
-    addEvent("SESSION_STOP_ERROR", { trigger, message: error.message });
-  }
+  await setHardwareLed(false, "session_ended");
+  setConnection("hardware", hardwareMode ? "Session 已结束 · 灯灭" : "未启用", hardwareMode ? "ok" : "");
+  openFeedback(trigger);
 }
 
 async function handleStartClick() {
-  if (hardwareMode && state.hardwarePrepared && !state.hardwareSessionActive) {
-    await activateHardwareSession("web_fallback");
+  if (!elements.goal.value.trim()) {
+    elements.goal.focus();
+    elements.goal.setAttribute("aria-invalid", "true");
+    addEvent("START_BLOCKED", { message: "请先输入这次要完成的任务" });
     return;
   }
+  elements.goal.removeAttribute("aria-invalid");
   await startMonitoring();
 }
 
@@ -748,6 +755,7 @@ async function startMonitoring() {
   elements.start.disabled = true;
   elements.start.textContent = "正在授权…";
   try {
+    await setHardwareLed(true, "starting");
     if (demoMode) {
       state.running = true;
       state.screenShared = true;
@@ -772,19 +780,8 @@ async function startMonitoring() {
       updateReadyGate();
       rememberTimer(setInterval(emitSample, 5000));
       rememberTimer(setInterval(updateReadyGate, 500));
-      if (hardwareMode) {
-        state.hardwarePrepared = true;
-        state.hardwareSessionActive = false;
-        elements.end.classList.add("hidden");
-        elements.start.disabled = false;
-        elements.start.textContent = "备用：网页开始 Session";
-        setConnection("hardware", "检测已准备 · 等待实体按钮", "warn");
-        await setHardwareLed(false, "idle_ready");
-        addEvent("HARDWARE_ARMED", { message: "等待实体按钮开始" });
-      } else {
-        elements.end.classList.remove("hidden");
-        elements.start.textContent = "监测运行中";
-      }
+      state.hardwarePrepared = true;
+      await activateHardwareSession("web_start");
       return;
     }
 
@@ -842,29 +839,17 @@ async function startMonitoring() {
     rememberTimer(setInterval(analyzeScreen, 1000));
     rememberTimer(setInterval(emitSample, 5000));
     rememberTimer(setInterval(updateReadyGate, 500));
-    if (hardwareMode) {
-      state.hardwarePrepared = true;
-      state.hardwareSessionActive = false;
-      elements.end.classList.add("hidden");
-      elements.start.disabled = false;
-      elements.start.textContent = "备用：网页开始 Session";
-      setConnection("hardware", "检测已准备 · 等待实体按钮", "warn");
-    } else {
-      elements.end.classList.remove("hidden");
-      elements.start.textContent = "监测运行中";
-    }
     addEvent("MONITORING_STARTED", {
       camera: true,
       screen: true,
       display_surface: displaySurface || "monitor_requested",
     });
-    if (hardwareMode) {
-      await setHardwareLed(false, "idle_ready");
-      addEvent("HARDWARE_ARMED", { message: "等待实体按钮开始" });
-    }
+    state.hardwarePrepared = true;
+    await activateHardwareSession("web_start");
   } catch (error) {
+    await setHardwareLed(false, "start_failed");
     elements.start.disabled = false;
-    elements.start.textContent = "重新开始";
+    elements.start.textContent = "重新授权并开始";
     if (!state.cameraStream) setConnection("camera", "授权未完成", "bad");
     if (!state.screenStream) setConnection("screen", "授权未完成", "bad");
     if (state.cameraStream && state.screenStream) setConnection("agent", "Agent 会话失败", "bad");
@@ -1030,14 +1015,16 @@ function openFeedback(trigger = "web_button") {
     addEvent("END_ERROR", { message: "请先开始完整监测" });
     return;
   }
+  state.sessionEndedAt = Date.now();
+  state.hardwareSessionActive = false;
   stopMonitoring();
   void syncHardwareLight("off");
-  elements.feedbackCard.classList.remove("hidden");
-  elements.voiceStatus.textContent = trigger === "joystick_returned_to_origin"
-    ? "检测到摇杆已回原位，专注记录已停止。请依次回答两个问题；板载麦克风接入后会自动填入。"
-    : "专注记录已停止。请依次回答两个问题。";
+  void setHardwareLed(false, "session_ended");
+  elements.voiceStatus.textContent = trigger === "physical_button"
+    ? "检测到实体按钮结束。请选择是否计入；专注感受可以语音输入、打字或留空。"
+    : "请选择是否计入；专注感受可以语音输入、打字或留空。";
   addEvent("SESSION_END_REQUESTED", { trigger, next_state: "REFLECTING" });
-  elements.feedbackCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  setSessionPhase("reflection");
 }
 
 async function pollHardwareEvents() {
@@ -1053,8 +1040,13 @@ async function pollHardwareEvents() {
         setConnection("hardware", "桥接在线 · 板子已断开", "bad");
       }
       if (event.type === "SESSION_START_REQUESTED") {
-        setConnection("hardware", "桥接在线 · 收到开始", "ok");
-        await activateHardwareSession(event.payload.trigger);
+        if (!state.hardwarePrepared) {
+          setConnection("hardware", "已按实体按钮 · 请在网页点击开始授权", "warn");
+          addEvent("HARDWARE_START_WAITING_FOR_PERMISSION", { trigger: event.payload.trigger });
+        } else {
+          setConnection("hardware", "桥接在线 · 收到开始", "ok");
+          await activateHardwareSession(event.payload.trigger);
+        }
       }
       if (event.type === "SESSION_END_REQUESTED" && state.hardwareSessionActive) {
         setConnection("hardware", "桥接在线 · 收到结束", "ok");
@@ -1064,13 +1056,9 @@ async function pollHardwareEvents() {
         event.type === "REFLECTION_TRANSCRIPT" &&
         event.payload.local_session_id === state.localSessionId
       ) {
-        const target = event.payload.question === "completion_report"
-          ? elements.completionFeedback
-          : elements.experienceFeedback;
-        target.value = event.payload.text;
-        elements.voiceStatus.textContent = `已收到板载麦克风的${event.payload.question === "completion_report" ? "第一段" : "第二段"}回答。`;
-        if (elements.completionFeedback.value.trim() && elements.experienceFeedback.value.trim()) {
-          await generateSessionSummary();
+        if (event.payload.question === "focus_experience") {
+          elements.experienceFeedback.value = event.payload.text;
+          elements.voiceStatus.textContent = "已收到专注感受的语音文字。";
         }
       }
     }
@@ -1079,6 +1067,14 @@ async function pollHardwareEvents() {
   } finally {
     state.hardwarePollTimer = setTimeout(pollHardwareEvents, 750);
   }
+}
+
+function voiceButtonLabel(targetId) {
+  return targetId === "goal" ? "🎙 语音输入" : "🎙 语音输入感受";
+}
+
+function voiceStatusFor(targetId) {
+  return targetId === "goal" ? elements.goalVoiceStatus : elements.voiceStatus;
 }
 
 function startVoiceAnswer(targetId, button) {
@@ -1093,7 +1089,8 @@ function startVoiceAnswer(targetId, button) {
   recognition.continuous = false;
   button.disabled = true;
   button.textContent = "正在听…";
-  elements.voiceStatus.textContent = "请开始说话，停顿后会自动填入文字。";
+  const status = voiceStatusFor(targetId);
+  status.textContent = "请开始说话，停顿后会自动填入文字。";
   recognition.onresult = (event) => {
     const text = event.results?.[0]?.[0]?.transcript?.trim();
     if (text) {
@@ -1102,23 +1099,24 @@ function startVoiceAnswer(targetId, button) {
     }
   };
   recognition.onerror = (event) => {
-    elements.voiceStatus.textContent = `语音识别未完成：${event.error}。可以直接输入。`;
+    status.textContent = `语音识别未完成：${event.error}。可以直接输入。`;
   };
   recognition.onend = () => {
     button.disabled = false;
-    button.textContent = targetId === "completionFeedback" ? "🎙 语音回答第一个问题" : "🎙 语音回答第二个问题";
-    if (!elements.voiceStatus.textContent.includes("未完成")) elements.voiceStatus.textContent = "语音已转成文字，可以继续补充或提交。";
+    button.textContent = voiceButtonLabel(targetId);
+    if (!status.textContent.includes("未完成")) status.textContent = "语音已转成文字，可以继续补充或提交。";
   };
   recognition.start();
 }
 
 async function toggleRecordedVoiceAnswer(targetId, button) {
+  const status = voiceStatusFor(targetId);
   if (state.voiceRecorder?.state === "recording") {
     state.voiceRecorder.stop();
     return;
   }
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    elements.voiceStatus.textContent = "当前浏览器不支持录音，请直接输入回答。";
+    status.textContent = "当前浏览器不支持录音，请直接输入。";
     return;
   }
   try {
@@ -1136,15 +1134,16 @@ async function toggleRecordedVoiceAnswer(targetId, button) {
     state.voiceRecorder.onstop = transcribeRecordedAnswer;
     state.voiceRecorder.start();
     button.textContent = "■ 停止并转成文字";
-    elements.voiceStatus.textContent = "正在录音。说完后再次点击按钮；音频会发送到 OpenAI 转成文字。";
+    status.textContent = "正在录音。说完后再次点击按钮；音频会发送到 OpenAI 转成文字。";
   } catch (error) {
-    elements.voiceStatus.textContent = `无法开始录音：${error.message}。可以直接输入。`;
+    status.textContent = `无法开始录音：${error.message}。可以直接输入。`;
   }
 }
 
 async function transcribeRecordedAnswer() {
   const button = state.voiceButton;
   const targetId = state.voiceTargetId;
+  const status = voiceStatusFor(targetId);
   for (const track of state.voiceStream?.getTracks?.() ?? []) track.stop();
   state.voiceStream = null;
   if (button) {
@@ -1164,13 +1163,13 @@ async function transcribeRecordedAnswer() {
     if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
     const target = document.getElementById(targetId);
     target.value = [target.value.trim(), result.text].filter(Boolean).join(" ");
-    elements.voiceStatus.textContent = `语音已由 ${result.model} 转成文字，可以编辑后提交。`;
+    status.textContent = `语音已由 ${result.model} 转成文字，可以编辑后提交。`;
   } catch (error) {
-    elements.voiceStatus.textContent = `语音转写失败：${error.message}。可以直接输入。`;
+    status.textContent = `语音转写失败：${error.message}。可以直接输入。`;
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = targetId === "completionFeedback" ? "🎙 语音回答第一个问题" : "🎙 语音回答第二个问题";
+      button.textContent = voiceButtonLabel(targetId);
     }
     state.voiceRecorder = null;
     state.voiceTargetId = null;
@@ -1204,28 +1203,43 @@ function stopMonitoring() {
 }
 
 async function generateSessionSummary() {
-  const completionReport = elements.completionFeedback.value.trim();
+  const recordChoice = document.querySelector('input[name="recordSession"]:checked')?.value;
   const focusExperience = elements.experienceFeedback.value.trim();
-  if (!completionReport || !focusExperience) {
-    elements.voiceStatus.textContent = "请先回答两个问题，再生成总结。";
+  if (!recordChoice) {
+    elements.voiceStatus.textContent = "请先选择是否将这一次专注计入记录。";
     return;
   }
   elements.generateSummary.disabled = true;
-  elements.generateSummary.textContent = "flow-coordinator 总结中…";
+  elements.generateSummary.textContent = recordChoice === "yes" ? "flow-coordinator 总结中…" : "正在结束本次会话…";
   try {
+    if (recordChoice === "no") {
+      const durationSeconds = Math.max(0, Math.round(((state.sessionEndedAt || Date.now()) - state.sessionStartedAt) / 1000));
+      await api("/api/session/stop", {
+        ...sessionEnvelope(),
+        duration_seconds: durationSeconds,
+        interruptions: interruptionSummary(),
+        end_reason: "user_discarded",
+      });
+      const interruptions = interruptionSummary();
+      elements.summaryOutcome.textContent = "未计入";
+      elements.summaryOutcome.className = "state-badge neutral";
+      elements.summaryText.textContent = "这次会话已经正常结束，但按照你的选择，不会保存为一次专注记录。";
+      elements.summaryMinutes.textContent = `${Math.max(1, Math.round(durationSeconds / 60))} 分钟`;
+      elements.summaryInterruptions.textContent = `${interruptions.count} 次 · ${interruptions.total_seconds} 秒`;
+      elements.summaryNextAction.textContent = "准备好后，可以开始下一次专注";
+      addEvent("SESSION_DISCARDED", { duration_seconds: durationSeconds });
+      setSessionPhase("summary");
+      return;
+    }
     const response = await api("/api/session/end", {
       ...sessionEnvelope(),
       user_feedback: {
-        completion_report: completionReport,
-        focus_experience: focusExperience,
+        completion_report: "用户确认将本次专注计入记录",
+        focus_experience: focusExperience || "用户未填写专注感受",
       },
       interruptions: interruptionSummary(),
     });
     const summary = response.summary;
-    stopMonitoring();
-    elements.feedbackCard.classList.add("hidden");
-    elements.end.classList.add("hidden");
-    elements.summaryCard.classList.remove("hidden");
     elements.summaryOutcome.textContent = summary.outcome.toUpperCase();
     elements.summaryOutcome.className = `state-badge ${summary.outcome === "completed" ? "good" : "warn"}`;
     elements.summaryText.textContent = summary.summary;
@@ -1237,11 +1251,21 @@ async function generateSessionSummary() {
       status: response.trace.at(-1)?.status,
       assistant_message: response.trace.at(-1)?.assistantMessageObserved,
     });
-    elements.summaryCard.scrollIntoView({ behavior: "smooth", block: "start" });
+    const history = JSON.parse(localStorage.getItem("refocus_session_history") || "[]");
+    history.unshift({
+      local_session_id: state.localSessionId,
+      goal: elements.goal.value.trim(),
+      recorded: true,
+      focus_experience: focusExperience || null,
+      summary,
+      ended_at: new Date(state.sessionEndedAt || Date.now()).toISOString(),
+    });
+    localStorage.setItem("refocus_session_history", JSON.stringify(history.slice(0, 20)));
+    setSessionPhase("summary");
   } catch (error) {
     elements.voiceStatus.textContent = `总结生成失败：${error.message}`;
     elements.generateSummary.disabled = false;
-    elements.generateSummary.textContent = "重新生成总结";
+    elements.generateSummary.textContent = "重新确认";
   }
 }
 
@@ -1252,16 +1276,16 @@ elements.cameraTest.addEventListener("click", startCameraTest);
 elements.clarify.addEventListener("click", clarifyTask);
 elements.classify.addEventListener("click", classifyContext);
 elements.visualClassify.addEventListener("click", toggleVisualClassification);
-elements.end.addEventListener("click", () => hardwareMode
-  ? finishHardwareSession("web_fallback")
-  : openFeedback("web_button"));
+elements.end.addEventListener("click", () => finishHardwareSession("web_end"));
 elements.generateSummary.addEventListener("click", generateSessionSummary);
+elements.newSession.addEventListener("click", () => location.reload());
 for (const button of document.querySelectorAll("[data-voice-target]")) {
   button.addEventListener("click", () => startVoiceAnswer(button.dataset.voiceTarget, button));
 }
 loadFaceModel();
 loadVisualProvider();
 pollHardwareEvents();
+setSessionPhase("start");
 if (webSerialMode) {
   void initializeHardwareDetection();
 } else {
