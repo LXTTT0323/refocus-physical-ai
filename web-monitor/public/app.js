@@ -142,26 +142,12 @@ function escapeHtml(value) {
 }
 
 async function api(path, body) {
-  let demoToken = sessionStorage.getItem("refocus_demo_token") ?? "";
   const headers = body === undefined ? {} : { "Content-Type": "application/json" };
-  if (demoToken) headers["x-refocus-demo-token"] = demoToken;
-  let response = await fetch(path, body === undefined ? { headers } : {
+  const response = await fetch(path, body === undefined ? { headers } : {
     method: "POST",
     headers,
     body: JSON.stringify(body),
   });
-  if (response.status === 401 && !demoToken) {
-    demoToken = window.prompt("请输入 RE:FOCUS 演示访问码")?.trim() ?? "";
-    if (demoToken) {
-      sessionStorage.setItem("refocus_demo_token", demoToken);
-      headers["x-refocus-demo-token"] = demoToken;
-      response = await fetch(path, body === undefined ? { headers } : {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      });
-    }
-  }
   const result = await response.json();
   if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
   return result;
@@ -866,9 +852,6 @@ async function transcribeRecordedAnswer() {
       method: "POST",
       headers: {
         "Content-Type": blob.type.split(";")[0] || "audio/webm",
-        ...(sessionStorage.getItem("refocus_demo_token")
-          ? { "x-refocus-demo-token": sessionStorage.getItem("refocus_demo_token") }
-          : {}),
       },
       body: blob,
     });

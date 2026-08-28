@@ -180,35 +180,6 @@ test("deployed monitor can restore a session after a serverless restart", async 
   });
 });
 
-test("deployed monitor protects Agent Stack calls with a demo token", async () => {
-  const server = createMonitorServer({
-    coordinatorFactory: () => new MockFlowCoordinator(),
-    demoToken: "test-demo-token",
-  });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-  try {
-    const denied = await fetch(`http://127.0.0.1:${port}/api/session/start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal: "test" }),
-    });
-    assert.equal(denied.status, 401);
-
-    const allowed = await fetch(`http://127.0.0.1:${port}/api/session/start`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-refocus-demo-token": "test-demo-token",
-      },
-      body: JSON.stringify({ goal: "完成 RE:FOCUS 路演 PPT" }),
-    });
-    assert.equal(allowed.status, 201);
-  } finally {
-    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  }
-});
-
 test("visual route falls back to local OCR when the Agent model has no vision", async () => {
   const coordinator = new MockFlowCoordinator();
   coordinator.classifyVisualContext = async () => {

@@ -87,7 +87,6 @@ export function createMonitorHandler({
   visualProvider = process.env.REFOCUS_VISUAL_PROVIDER ?? (process.env.OPENAI_API_KEY ? "openai" : "ocr"),
   visualObserver,
   audioTranscriber,
-  demoToken = process.env.REFOCUS_DEMO_TOKEN,
 } = {}) {
   const makeCoordinator = coordinatorFactory ?? (
     (sessionId = null) => AgentStackFlowCoordinator.fromEnvironment({ sessionId })
@@ -134,15 +133,6 @@ export function createMonitorHandler({
 
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     try {
-      const configuredAccessToken = demoToken;
-      if (
-        configuredAccessToken &&
-        url.pathname.startsWith("/api/") &&
-        url.pathname !== "/api/health" &&
-        request.headers["x-refocus-demo-token"] !== configuredAccessToken
-      ) {
-        return json(response, 401, { error: "demo access token is required" });
-      }
       if (request.method === "GET" && url.pathname === "/api/health") {
         const required = [
           "AGENT_STACK_BASE_URL",

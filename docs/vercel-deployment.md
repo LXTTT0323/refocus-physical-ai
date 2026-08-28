@@ -10,7 +10,8 @@
 - `AGENT_STACK_AGENT_ID`
 - `OPENAI_API_KEY`
 - `REFOCUS_VISUAL_PROVIDER=openai`
-- `REFOCUS_DEMO_TOKEN`：分享给现场体验者的演示访问码
+
+线上演示不设置访问码，打开网址即可使用。Agent Stack 和 OpenAI Key 仍只存在于 Vercel 服务端环境变量中。
 
 Vercel Function 可能在任意请求后重启，因此浏览器会携带不含密钥的 Session ID、任务合同和开始时间，让下一次调用能够恢复同一个 Agent Stack Session。
 
