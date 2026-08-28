@@ -1,5 +1,6 @@
 import { FaceLandmarker, FilesetResolver } from "/vendor/vision_bundle.mjs";
 import { FOCUS_THRESHOLDS, FocusSignalPolicy } from "/focus-policy.js";
+import { HeadDirectionFilter } from "/head-direction-filter.js";
 
 const $ = (selector) => document.querySelector(selector);
 const demoMode = new URLSearchParams(location.search).get("demo") === "1";
@@ -85,6 +86,8 @@ const state = {
   visualTimer: null,
   visualInFlight: false,
   headAwaySeconds: 0,
+  headAwayStartedAt: 0,
+  headDirectionFilter: new HeadDirectionFilter(),
   focusPolicy: new FocusSignalPolicy(),
 };
 
@@ -171,8 +174,7 @@ function analyzeFaceResult(result, now) {
     state.faceCandidateAt = 0;
     state.confirmedPresent = false;
     state.missingSeconds = state.lastFaceAt ? Math.max(0, (now - state.lastFaceAt) / 1000) : 0;
-    state.headDirection = "unknown";
-    state.headAwaySeconds = 0;
+    state.headAwaySeconds = state.headAwayStartedAt ? (now - state.headAwayStartedAt) / 1000 : 0;
     state.eyeState = "unknown";
     state.eyeBlinkScore = 0;
     state.yawnDetected = false;
@@ -213,23 +215,27 @@ function analyzeFaceResult(result, now) {
   const height = Math.max(0.001, Math.abs(chin.y - top.y));
   const yaw = (nose.x - (left.x + right.x) / 2) / width;
   const pitch = (nose.y - (top.y + chin.y) / 2) / height;
-  let nextHeadDirection;
-  if (Math.abs(pitch) > 0.16) nextHeadDirection = "away";
+  let rawHeadDirection;
+  if (Math.abs(pitch) > 0.16) rawHeadDirection = "away";
   // The preview is mirrored like a normal selfie camera, so user-facing left/right
   // is the reverse of the model's raw image x-axis.
-  else if (yaw < -0.11) nextHeadDirection = "right";
-  else if (yaw > 0.11) nextHeadDirection = "left";
-  else nextHeadDirection = "toward_screen";
+  else if (yaw < -0.11) rawHeadDirection = "right";
+  else if (yaw > 0.11) rawHeadDirection = "left";
+  else rawHeadDirection = "toward_screen";
+  const nextHeadDirection = state.headDirectionFilter.update(rawHeadDirection, now);
   if (nextHeadDirection !== state.headDirection) {
-    if (state.headDirection !== "unknown" && nextHeadDirection === "toward_screen") {
+    const wasAway = state.headDirection !== "unknown" && state.headDirection !== "toward_screen";
+    const isAway = nextHeadDirection !== "unknown" && nextHeadDirection !== "toward_screen";
+    if (wasAway && !isAway) {
       addEvent("HEAD_RETURNED", { from: state.headDirection });
     }
+    if (!wasAway && isAway) state.headAwayStartedAt = now;
+    if (!isAway) state.headAwayStartedAt = 0;
     state.headDirection = nextHeadDirection;
-    state.headDirectionSince = now;
     state.headCandidateRecorded = false;
     state.headConfirmedRecorded = false;
   }
-  const headAwaySeconds = state.headDirection === "toward_screen" ? 0 : (now - state.headDirectionSince) / 1000;
+  const headAwaySeconds = state.headAwayStartedAt ? (now - state.headAwayStartedAt) / 1000 : 0;
   state.headAwaySeconds = headAwaySeconds;
   if (headAwaySeconds >= 3 && !state.headCandidateRecorded) {
     state.headCandidateRecorded = true;

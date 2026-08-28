@@ -2,7 +2,7 @@ export const FOCUS_THRESHOLDS = Object.freeze({
   enterGreenMs: 5_000,
   missingRedSeconds: 3,
   headContextCrossSeconds: 8,
-  headRedSeconds: 20,
+  headRedSeconds: 12,
   unrelatedSamplesForRed: 2,
   recoverGreenMs: 3_000,
   visualIntervalMs: 10_000,
