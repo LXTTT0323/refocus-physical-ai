@@ -71,6 +71,16 @@ const elements = {
   summaryMinutes: $("#summaryMinutes"),
   summaryInterruptions: $("#summaryInterruptions"),
   summaryNextAction: $("#summaryNextAction"),
+  historySessions: $("#historySessions"),
+  historyMinutes: $("#historyMinutes"),
+  historyAverage: $("#historyAverage"),
+  taskDonut: $("#taskDonut"),
+  taskDonutValue: $("#taskDonutValue"),
+  taskLegend: $("#taskLegend"),
+  durationDonut: $("#durationDonut"),
+  durationDonutValue: $("#durationDonutValue"),
+  durationLegend: $("#durationLegend"),
+  historyInsight: $("#historyInsight"),
   newSession: $("#newSessionButton"),
 };
 
@@ -165,6 +175,7 @@ function setSessionPhase(phase) {
         ? elements.summaryCard
         : elements.startView;
   target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (phase === "summary") renderHistoryDashboard();
 }
 
 function setConnection(name, text, kind = "") {
@@ -1246,6 +1257,80 @@ function stopMonitoring() {
   state.screenShared = false;
 }
 
+const CHART_COLORS = ["#7cf1bc", "#f3d66d", "#72b7ff", "#b69cff", "#ff8f87", "#91aaa0"];
+
+function taskTypeFor(goal = "") {
+  const rules = [
+    ["编程开发", /代码|编程|开发|debug|bug|接口|网站|网页|程序|算法/i],
+    ["写作表达", /写作|文案|文章|论文|报告|PPT|演讲|路演|脚本|提案/i],
+    ["学习研究", /学习|阅读|读书|复习|课程|研究|背诵|作业|考试/i],
+    ["设计创作", /设计|剪辑|视频|图片|海报|建模|创作|原型/i],
+    ["事务沟通", /邮件|会议|沟通|回复|整理|计划|排期|表格/i],
+  ];
+  return rules.find(([, pattern]) => pattern.test(goal))?.[0] ?? "其他任务";
+}
+
+function durationBand(minutes) {
+  if (minutes <= 15) return "轻专注 · 15 分钟内";
+  if (minutes <= 45) return "深专注 · 16–45 分钟";
+  return "长专注 · 45 分钟以上";
+}
+
+function renderDonut(node, valueNode, legendNode, entries, centerText, unit) {
+  const total = entries.reduce((sum, [, value]) => sum + value, 0);
+  let cursor = 0;
+  const segments = entries.map(([, value], index) => {
+    const start = cursor;
+    cursor += total ? value / total * 360 : 0;
+    return `${CHART_COLORS[index % CHART_COLORS.length]} ${start}deg ${cursor}deg`;
+  });
+  node.style.background = total
+    ? `conic-gradient(${segments.join(",")})`
+    : "rgba(145,170,160,.12)";
+  valueNode.textContent = centerText || "—";
+  legendNode.innerHTML = entries.length
+    ? entries.map(([label, value], index) => `<li><i style="background:${CHART_COLORS[index % CHART_COLORS.length]}"></i><span>${escapeHtml(label)}</span><b>${value}${unit}</b></li>`).join("")
+    : "<li class=\"empty\">还没有已计入的记录</li>";
+}
+
+function renderHistoryDashboard() {
+  let history = [];
+  try {
+    history = JSON.parse(localStorage.getItem("refocus_session_history") || "[]");
+  } catch {
+    history = [];
+  }
+  const recorded = history.filter((item) => item?.recorded !== false);
+  const normalized = recorded.map((item) => {
+    const minutes = Math.max(1, Math.round(Number(
+      item.duration_minutes ?? item.summary?.focus_minutes_actual ?? (item.duration_seconds || 0) / 60,
+    ) || 0));
+    return { ...item, minutes, taskType: item.task_type || taskTypeFor(item.goal) };
+  });
+  const totalMinutes = normalized.reduce((sum, item) => sum + item.minutes, 0);
+  const average = normalized.length ? Math.round(totalMinutes / normalized.length) : 0;
+  elements.historySessions.textContent = `${normalized.length} 次`;
+  elements.historyMinutes.textContent = `${totalMinutes} 分钟`;
+  elements.historyAverage.textContent = `${average} 分钟`;
+
+  const taskTotals = new Map();
+  const durationTotals = new Map();
+  for (const item of normalized) {
+    taskTotals.set(item.taskType, (taskTotals.get(item.taskType) || 0) + item.minutes);
+    const band = durationBand(item.minutes);
+    durationTotals.set(band, (durationTotals.get(band) || 0) + 1);
+  }
+  const tasks = [...taskTotals.entries()].sort((a, b) => b[1] - a[1]);
+  const durations = [...durationTotals.entries()].sort((a, b) => b[1] - a[1]);
+  const favorite = tasks[0]?.[0];
+  const rhythm = durations[0]?.[0]?.split(" · ")[0];
+  renderDonut(elements.taskDonut, elements.taskDonutValue, elements.taskLegend, tasks, favorite, " 分钟");
+  renderDonut(elements.durationDonut, elements.durationDonutValue, elements.durationLegend, durations, rhythm, " 次");
+  elements.historyInsight.textContent = normalized.length
+    ? `你目前把最多专注时间投入在“${favorite}”，最常见的是“${rhythm}”节奏。继续记录后，偏好会越来越准确。`
+    : "完成第一次专注后，这里会逐渐形成你的专注画像。";
+}
+
 async function generateSessionSummary() {
   const recordChoice = document.querySelector('input[name="recordSession"]:checked')?.value;
   const focusExperience = elements.experienceFeedback.value.trim();
@@ -1300,11 +1385,14 @@ async function generateSessionSummary() {
       local_session_id: state.localSessionId,
       goal: elements.goal.value.trim(),
       recorded: true,
+      task_type: taskTypeFor(elements.goal.value.trim()),
+      duration_minutes: Math.max(1, Math.round(Number(summary.focus_minutes_actual) || 0)),
+      started_at: new Date(state.sessionStartedAt).toISOString(),
       focus_experience: focusExperience || null,
       summary,
       ended_at: new Date(state.sessionEndedAt || Date.now()).toISOString(),
     });
-    localStorage.setItem("refocus_session_history", JSON.stringify(history.slice(0, 20)));
+    localStorage.setItem("refocus_session_history", JSON.stringify(history.slice(0, 100)));
     setSessionPhase("summary");
   } catch (error) {
     elements.voiceStatus.textContent = `总结生成失败：${error.message}`;

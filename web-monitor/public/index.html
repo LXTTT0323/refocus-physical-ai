@@ -99,6 +99,34 @@
           <div><span>中断</span><strong id="summaryInterruptions">—</strong></div>
           <div><span>下一步</span><strong id="summaryNextAction">—</strong></div>
         </div>
+        <section class="focus-history" aria-labelledby="focusHistoryTitle">
+          <div class="history-head">
+            <div><p class="eyebrow">MY FOCUS</p><h2 id="focusHistoryTitle">我的专注画像</h2></div>
+            <span>仅统计选择“计入”的专注</span>
+          </div>
+          <div class="history-stats">
+            <div><span>累计专注</span><strong id="historySessions">0 次</strong></div>
+            <div><span>累计时长</span><strong id="historyMinutes">0 分钟</strong></div>
+            <div><span>平均每次</span><strong id="historyAverage">0 分钟</strong></div>
+          </div>
+          <div class="history-charts">
+            <article>
+              <h3>时间更常花在哪里</h3>
+              <div class="chart-body">
+                <div id="taskDonut" class="donut"><strong id="taskDonutValue">—</strong><span>最常投入</span></div>
+                <ul id="taskLegend" class="chart-legend"></ul>
+              </div>
+            </article>
+            <article>
+              <h3>单次专注时长分布</h3>
+              <div class="chart-body">
+                <div id="durationDonut" class="donut"><strong id="durationDonutValue">—</strong><span>主要节奏</span></div>
+                <ul id="durationLegend" class="chart-legend"></ul>
+              </div>
+            </article>
+          </div>
+          <p id="historyInsight" class="history-insight">完成第一次专注后，这里会逐渐形成你的专注画像。</p>
+        </section>
         <button id="newSessionButton" class="secondary new-session-button">开始下一次专注</button>
       </section>
 
