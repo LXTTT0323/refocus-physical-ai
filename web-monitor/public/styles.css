@@ -70,6 +70,13 @@ input:focus, select:focus { border-color: rgba(124,241,188,.6); box-shadow: 0 0 
 @keyframes pulse { 50% { opacity: .45; transform: scale(.82); } }
 button:disabled { cursor: not-allowed; opacity: .45; }
 .permission-note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; }
+.start-progress { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 11px 14px; color: var(--yellow); border: 1px solid rgba(243,214,109,.26); border-radius: 12px; background: rgba(243,214,109,.06); font-size: 13px; font-weight: 700; }
+.start-progress i { width: 10px; height: 10px; flex: 0 0 auto; border: 2px solid rgba(243,214,109,.25); border-top-color: var(--yellow); border-radius: 50%; animation: spin .9s linear infinite; }
+.start-progress.ready { color: var(--green); border-color: rgba(124,241,188,.3); background: rgba(124,241,188,.07); }
+.start-progress.ready i { border: 0; background: var(--green); animation: none; box-shadow: 0 0 12px rgba(124,241,188,.5); }
+.start-progress.error { color: var(--red); border-color: rgba(255,123,117,.3); background: rgba(255,123,117,.07); }
+.start-progress.error i { border-top-color: var(--red); }
+@keyframes spin { to { transform: rotate(360deg); } }
 .clarification-card { margin-top: 16px; padding: 20px; border-radius: 18px; border-color: rgba(243,214,109,.28); }
 .feedback-card, .summary-card { margin-top: 18px; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); box-shadow: var(--shadow); }
 .reflection-question { margin: 12px 0 18px; padding: 18px; border: 1px solid rgba(124,241,188,.2); border-radius: 16px; background: rgba(5,18,15,.72); }

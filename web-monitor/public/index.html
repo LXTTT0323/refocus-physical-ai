@@ -13,9 +13,8 @@
         <div>
           <p class="eyebrow">RE:FOCUS · LOCAL OBSERVER</p>
           <h1>让专注被看见，<span>不让隐私离开电脑。</span></h1>
-          <p class="lede">摄像头的人脸信号在本地分析；开启自动视觉后，共享屏幕每 10 秒最多发送一张压缩快照给 OpenAI 即时判断。flow-coordinator 负责任务合同、人工语义核验与会话总结。</p>
+          <p class="lede">说出目标，开始专注。RE:FOCUS 会在需要时提醒你，并在结束后留下清晰的专注记录。</p>
         </div>
-        <div class="privacy-pill"><i></i> 不上传连续视频</div>
       </header>
 
       <nav class="session-steps" aria-label="专注流程">
@@ -40,6 +39,9 @@
           <button id="startButton" class="primary start-session-button">准备检测并授权</button>
         </div>
         <p class="permission-note">先点击一次完成摄像头与屏幕共享授权；页面显示“准备完成”后，按实体按钮才会开始计时和监测。共享时请选择“整个屏幕”。</p>
+        <div id="startProgress" class="start-progress hidden" role="status" aria-live="polite">
+          <i></i><span>正在准备…</span>
+        </div>
         <details class="advanced-tools">
           <summary>开发测试工具</summary>
           <div>
@@ -181,7 +183,7 @@
               </div>
               <button id="visualClassifyButton" disabled>开启自动视觉判断</button>
             </div>
-            <p id="visualPrivacy" class="visual-privacy">正在确认视觉处理方式…</p>
+            <p id="visualPrivacy" class="visual-privacy hidden" aria-hidden="true"></p>
             <div id="visualResult" class="classification-result">视觉判断未开启</div>
           </div>
         </article>

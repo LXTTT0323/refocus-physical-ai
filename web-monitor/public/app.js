@@ -20,6 +20,7 @@ const elements = {
   runningGoal: $("#runningGoal"),
   runningElapsed: $("#runningElapsed"),
   runtimeView: $("#runtimeView"),
+  startProgress: $("#startProgress"),
   start: $("#startButton"),
   hardwareConnect: $("#hardwareConnectButton"),
   end: $("#endButton"),
@@ -170,6 +171,11 @@ function setConnection(name, text, kind = "") {
   const node = document.querySelector(`[data-status="${name}"]`);
   node.className = kind;
   node.querySelector("b").textContent = text;
+}
+
+function setStartProgress(text, kind = "working") {
+  elements.startProgress.className = `start-progress ${kind}`;
+  elements.startProgress.querySelector("span").textContent = text;
 }
 
 function updateRunningElapsed() {
@@ -774,7 +780,8 @@ async function testTaskUnderstanding() {
 
 async function startMonitoring() {
   elements.start.disabled = true;
-  elements.start.textContent = "正在授权…";
+  elements.start.textContent = "准备中…";
+  setStartProgress("第 1 步 / 4：请选择“整个屏幕”并确认共享");
   try {
     if (demoMode) {
       state.screenShared = true;
@@ -795,6 +802,7 @@ async function startMonitoring() {
       elements.yawn.textContent = "否";
       elements.change.textContent = "8.0%";
       elements.stable.textContent = "0 秒";
+      setStartProgress("第 3 步 / 4：正在理解本次任务…");
       await startAgentSession();
       state.hardwarePrepared = true;
       if (hardwareMode) {
@@ -802,6 +810,7 @@ async function startMonitoring() {
         elements.start.textContent = "备用：网页开始 Session";
         setConnection("hardware", "准备完成 · 等待实体按钮", "warn");
         await setHardwareLed(false, "prepared");
+        setStartProgress("准备完成：现在按下实体按钮即可开始", "ready");
       } else {
         await activateHardwareSession("web_start");
       }
@@ -812,7 +821,7 @@ async function startMonitoring() {
       throw new Error("当前浏览器不支持摄像头或屏幕共享，请使用最新版 Chrome/Edge");
     }
 
-    const displayPromise = navigator.mediaDevices.getDisplayMedia({
+    state.screenStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         displaySurface: "monitor",
         frameRate: { ideal: 5, max: 10 },
@@ -823,11 +832,11 @@ async function startMonitoring() {
       monitorTypeSurfaces: "include",
       preferCurrentTab: false,
     });
-    const cameraPromise = navigator.mediaDevices.getUserMedia({
+    setStartProgress("第 2 步 / 4：请允许使用摄像头");
+    state.cameraStream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
       audio: false,
     });
-    [state.screenStream, state.cameraStream] = await Promise.all([displayPromise, cameraPromise]);
     state.screenShared = true;
     state.lastScreenChangeAt = performance.now();
     elements.screenVideo.srcObject = state.screenStream;
@@ -855,7 +864,9 @@ async function startMonitoring() {
       badge(elements.screenState, "共享已停止", "bad");
       updateReadyGate();
     });
+    setStartProgress("第 3 步 / 4：正在准备专注识别…");
     await loadFaceModel();
+    setStartProgress("第 4 步 / 4：正在理解本次任务…");
     await startAgentSession();
     addEvent("MONITORING_PREPARED", {
       camera: true,
@@ -868,16 +879,24 @@ async function startMonitoring() {
       elements.start.textContent = "备用：网页开始 Session";
       setConnection("hardware", "准备完成 · 等待实体按钮", "warn");
       await setHardwareLed(false, "prepared");
+      setStartProgress("准备完成：现在按下实体按钮即可开始", "ready");
     } else {
       await activateHardwareSession("web_start");
     }
   } catch (error) {
     await setHardwareLed(false, "start_failed");
+    for (const stream of [state.cameraStream, state.screenStream]) {
+      for (const track of stream?.getTracks?.() ?? []) track.stop();
+    }
+    state.cameraStream = null;
+    state.screenStream = null;
+    state.screenShared = false;
     elements.start.disabled = false;
     elements.start.textContent = "重新授权并开始";
     if (!state.cameraStream) setConnection("camera", "授权未完成", "bad");
     if (!state.screenStream) setConnection("screen", "授权未完成", "bad");
     if (state.cameraStream && state.screenStream) setConnection("agent", "Agent 会话失败", "bad");
+    setStartProgress(`准备未完成：${error.message}`, "error");
     addEvent("START_ERROR", { message: error.message });
   }
 }
