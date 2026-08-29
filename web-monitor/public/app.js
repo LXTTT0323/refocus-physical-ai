@@ -11,6 +11,9 @@ const $ = (selector) => document.querySelector(selector);
 const demoMode = new URLSearchParams(location.search).get("demo") === "1";
 const hardwareMode = new URLSearchParams(location.search).get("hardware") === "1";
 const webSerialMode = new URLSearchParams(location.search).get("webserial") === "1";
+// Both transports use a physical button to control the product Session. They
+// differ only in transport: Mac bridge versus Chrome Web Serial.
+const physicalHardwareMode = hardwareMode || webSerialMode;
 
 const elements = {
   goal: $("#goal"),
@@ -236,10 +239,13 @@ async function sendHardwareCommand(command) {
 }
 
 async function syncHardwareLight(light) {
-  if (!state.hardwareConnected || state.hardwareLastLight === light) return;
+  // In direct Web Serial mode, the board is a calm Session indicator rather
+  // than a mirror of every vision-policy transition.
+  const effectiveLight = webSerialMode ? (state.running ? "green" : "off") : light;
+  if (!state.hardwareConnected || state.hardwareLastLight === effectiveLight) return;
   try {
-    await sendHardwareCommand(serialCommandForLight(light));
-    state.hardwareLastLight = light;
+    await sendHardwareCommand(serialCommandForLight(effectiveLight));
+    state.hardwareLastLight = effectiveLight;
   } catch (error) {
     addEvent("HARDWARE_LED_ERROR", { message: error.message });
   }
@@ -266,7 +272,7 @@ function handleHardwareFrame(frame) {
       addEvent("HARDWARE_START_REQUESTED", { action: "请先点击准备检测并完成摄像头和整屏授权" });
     }
     if (previous === true && frame.value === false && state.running && state.localSessionId) {
-      openFeedback("joystick_returned_to_origin");
+      void finishHardwareSession("physical_button");
     }
     return;
   }
@@ -604,7 +610,7 @@ function analyzeScreen() {
 
 function updateReadyGate() {
   const decision = state.focusPolicy.evaluate({
-    taskReady: state.taskContract?.status === "ready" && (!hardwareMode || state.hardwareSessionActive),
+    taskReady: state.taskContract?.status === "ready" && (!physicalHardwareMode || state.hardwareSessionActive),
     screenShared: state.screenShared,
     present: state.present,
     confirmedPresent: state.confirmedPresent,
@@ -713,8 +719,9 @@ async function activateHardwareSession(trigger = "physical_button") {
   elements.start.disabled = true;
   elements.start.textContent = "正在专注";
   elements.runningGoal.textContent = elements.goal.value.trim();
-  setConnection("hardware", hardwareMode ? "Session 已开始 · 灯亮" : "未启用", hardwareMode ? "ok" : "");
+  setConnection("hardware", physicalHardwareMode ? "已连接 · Session 已开始" : "未启用", physicalHardwareMode ? "ok" : "");
   await setHardwareLed(true, "session_active");
+  await syncHardwareLight("green");
   addEvent("SESSION_STARTED", { trigger });
   setSessionPhase("running");
   updateRunningElapsed();
@@ -728,10 +735,10 @@ async function activateHardwareSession(trigger = "physical_button") {
 }
 
 async function finishHardwareSession(trigger = "physical_button") {
-  if (!state.hardwareSessionActive || !state.localSessionId) return;
+  if (!state.running || !state.localSessionId) return;
   state.hardwareSessionActive = false;
   await setHardwareLed(false, "session_ended");
-  setConnection("hardware", hardwareMode ? "Session 已结束 · 灯灭" : "未启用", hardwareMode ? "ok" : "");
+  setConnection("hardware", physicalHardwareMode ? "已连接 · Session 已结束" : "未启用", physicalHardwareMode ? "ok" : "");
   openFeedback(trigger);
 }
 
@@ -743,7 +750,7 @@ async function handleStartClick() {
     return;
   }
   elements.goal.removeAttribute("aria-invalid");
-  if (hardwareMode && state.hardwarePrepared && !state.hardwareSessionActive) {
+  if (physicalHardwareMode && state.hardwarePrepared && !state.hardwareSessionActive) {
     await activateHardwareSession("web_fallback");
     return;
   }
@@ -816,7 +823,7 @@ async function startMonitoring() {
       setStartProgress("第 3 步 / 4：正在理解本次任务…");
       await startAgentSession();
       state.hardwarePrepared = true;
-      if (hardwareMode) {
+      if (physicalHardwareMode) {
         elements.start.disabled = false;
         elements.start.textContent = "备用：网页开始 Session";
         setConnection("hardware", "准备完成 · 等待实体按钮", "warn");
@@ -885,7 +892,7 @@ async function startMonitoring() {
       display_surface: displaySurface || "monitor_requested",
     });
     state.hardwarePrepared = true;
-    if (hardwareMode) {
+    if (physicalHardwareMode) {
       elements.start.disabled = false;
       elements.start.textContent = "备用：网页开始 Session";
       setConnection("hardware", "准备完成 · 等待实体按钮", "warn");
