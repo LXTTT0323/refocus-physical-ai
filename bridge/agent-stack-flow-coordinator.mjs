@@ -333,7 +333,7 @@ export class AgentStackFlowCoordinator {
     agentId,
     sessionId = null,
     fetchImpl = fetch,
-    timeoutMs = 90_000,
+    timeoutMs = 150_000,
   }) {
     if (!baseUrl || !apiKey || !projectId || !agentId) {
       throw new Error("baseUrl, apiKey, projectId, and agentId are required");
