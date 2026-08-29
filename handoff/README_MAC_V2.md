@@ -1,5 +1,7 @@
 # RE:FOCUS C V2：Mac 烧录与 USB 串口测试
 
+> **历史归档，不是最终比赛方案。** 最终 Demo 不使用摇杆或 WS2812；请只遵循 [`README_先看这里.md`](README_先看这里.md) 的 Button-PullUp + LED1 + USB Bridge 流程。
+
 本包的正式链路不需要 ROROLEE：
 
 ```text
@@ -144,4 +146,3 @@ quit
 - `green` 和 `blink-red` 的 ACK 与实物视频。
 
 本包不包含 Agent Stack API Key。烧录测试阶段不需要登录 Agent Stack，也不需要打开 ROROLEE。
-

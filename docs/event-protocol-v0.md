@@ -1,5 +1,7 @@
 # RE:FOCUS 事件协议 v0.1
 
+> **历史设计记录。** 文中摇杆入口已被最终方案替换；比赛 Demo 只使用 Button-PullUp 按钮开始/结束 Session。
+
 状态：已确认并实现本地状态机，可用于模拟闭环与跨平台 Desktop Bridge 开发。
 
 ## 设计原则

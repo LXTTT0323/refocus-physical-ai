@@ -1,5 +1,7 @@
 # RE:FOCUS MVP 定义
 
+> **早期产品定义。** 最终比赛 Demo 已收敛为 Button-PullUp 按钮 + LED1，不使用摇杆；最终闭环以根目录 README 为准。
+
 ## 一句话
 
 RE:FOCUS 是保护工作上下文的桌面 Physical AI Agent：当用户被打断或离开工作现场时，它保存“做到哪里、下一步是什么”，并在用户回来后帮助他快速回神。

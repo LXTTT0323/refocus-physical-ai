@@ -1,5 +1,7 @@
 # RE:FOCUS C 板第一版：macOS 烧录
 
+> **历史归档，不是最终比赛方案。** 最终 Demo 不使用摇杆，也不按本文重新烧录；请只遵循 [`README_先看这里.md`](README_先看这里.md) 的 Button-PullUp + LED1 + USB Bridge 流程。
+
 ## 1. 环境
 
 安装并使用 ESP-IDF v5.5.4。推荐通过 Espressif 官方安装方式完成，然后打开已经载入 ESP-IDF 环境的 Terminal。
@@ -101,4 +103,3 @@ idf.py -p /dev/cu.usbserial-xxxx flash monitor
 重新编译烧录。
 
 编译失败时，请返回第一条错误以及前后约 20 行；不要只截最后一行。
-

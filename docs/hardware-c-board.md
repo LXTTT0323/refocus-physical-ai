@@ -1,5 +1,7 @@
 # C 板完整核对与 RE:FOCUS 落地方案
 
+> **硬件盘点与历史候选方案。** 本文列出 C 板全部模块，因此会出现摇杆、RGB 等未采用能力；最终比赛 Demo 不使用摇杆，实际接线以根目录 README 为准。
+
 > 核对日期：2026-08-28。实际领用硬件已确认为 **C 板：ESP32-S3 AIoT 全功能套件**。本页以比赛官方赛前说明、厂商硬件文档和当前锁定的 Agent_link 源码交叉核对；若现场实物丝印或电路版本不同，以实物和现场口径为准。
 
 ## 1. 硬件身份与定位
@@ -170,4 +172,3 @@ C 板 PIR + 距离 + 用户按键
 - [VentureD 赛前说明：四块板、C 板参数与适配说明](https://tidb-pre-match-intro-dct7ede.gamma.site/)
 - [OpenJumper ESP32-S3 AIoT 套件厂商文档](https://www.openjumper.com/doc/esp32s3-aiot)
 - [DeotalandDev Agent_link](https://github.com/DeotalandDev/Agent_link)
-

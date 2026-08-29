@@ -1,5 +1,7 @@
 # RE:FOCUS C V2 串口协议
 
+> **历史归档。** 本协议描述旧版摇杆/RGB 固件，不是最终 Button-PullUp + LED1 Demo 的运行入口；最终现场流程见 [`README_先看这里.md`](README_先看这里.md)。
+
 传输参数：115200 baud，8N1，UTF-8，每条命令一行。串口同时包含 ESP-IDF 日志，设备协议帧始终以 `@REFOCUS ` 开头，Desktop Bridge 必须忽略其他行。
 
 ## 设备到电脑
