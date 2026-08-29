@@ -5,9 +5,9 @@
 ## Agent
 
 - 名称：`flow-coordinator`
-- Agent ID：`agent_d6aa32cd9e91a2f80f147b6236cc468e`
+- Agent ID：`agent_d6aa…c468e`
 - Project：`Default Project`
-- Project ID：`proj_2820e7f7e9fa44f9b45f28c4ebe3c25f`
+- Project ID：`proj_2820…3c25f`
 - 模板：`Default Agent`
 - Runtime：`pi`
 - Sandbox Profile：`standard-v1`
@@ -17,9 +17,9 @@
 
 ## API 基线测试
 
-- Session ID：`sess_85dd37cf93b74f7fbecb5cf2a45dd85c`
-- Turn ID：`turn_2d410b1fcc9a4a05a933fe7fafe4f394`
-- Agent Run ID：`run_c229bdb455f74979895d4058315760aa`
+- Session ID：`sess_85dd…dd85c`
+- Turn ID：`turn_2d41…4f394`
+- Agent Run ID：`run_c229…760aa`
 
 观察到：
 
@@ -36,4 +36,3 @@ API_HELLO_WORLD_OK
 根据 2026-08-28 的产品决定，三个产品 Skill 暂停设计、上传与安装，等待重新确认职责和 JSON 合同。
 
 本地 `product-skills/task-setup/` 只是未定稿草稿，不作为正式版本，不得上传或安装。
-

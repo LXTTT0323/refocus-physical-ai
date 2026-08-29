@@ -18,18 +18,18 @@
 
 ## 真实明确任务闭环
 
-Agent Stack Session：`sess_627df665f15f47fdb11141f5f39b4774`
+Agent Stack Session：`sess_627d…b4774`
 
 | 操作 | Turn | Agent Run | 结果 |
 | --- | --- | --- | --- |
-| `SETUP_TASK` | `turn_b2fadc86850e43d4ab3f7c7485111f59` | `run_d754339b8f084754829d32d77c5dd22e` | succeeded + assistant message |
-| `CREATE_CHECKPOINT` | `turn_137a434bd2454e22abb8ecee940d8afb` | `run_cefc636914bd4b71831646d48b954b45` | succeeded + assistant message |
-| `CREATE_RESTORE` | `turn_b29ca406d8684f6ba6d8ec959ae0af66` | `run_102c7b51a915444f9761baccf87c5564` | succeeded + assistant message |
-| `END_SESSION` | `turn_87ec46125f0848019b68a3bc7ac930d1` | `run_a4221068991842a981b8728dbbf5c29f` | succeeded + assistant message |
+| `SETUP_TASK` | `turn_b2fa…11f59` | `run_d754…dd22e` | succeeded + assistant message |
+| `CREATE_CHECKPOINT` | `turn_137a…d8afb` | `run_cefc…54b45` | succeeded + assistant message |
+| `CREATE_RESTORE` | `turn_b29c…0af66` | `run_102c…c5564` | succeeded + assistant message |
+| `END_SESSION` | `turn_87ec…930d1` | `run_a422…5c29f` | succeeded + assistant message |
 
 ## 真实模糊任务与补充
 
-Agent Stack Session：`sess_e8fcf5adf08b495580551139f1266481`
+Agent Stack Session：`sess_e8fc…66481`
 
 输入“做一下项目”后，首个 Turn 返回：
 
@@ -43,7 +43,7 @@ Agent Stack Session：`sess_e8fcf5adf08b495580551139f1266481`
 
 | 操作 | Turn | Agent Run | 结果 |
 | --- | --- | --- | --- |
-| `SETUP_TASK` | `turn_db0989c4aec24056ba15391412cff771` | `run_e5759558fe224c04a97857d3933851c9` | succeeded + assistant message |
-| `CLARIFY_TASK` | `turn_387a294826eb468980d7b42460f25da9` | `run_8774147d5f73415fa1f82fab0fcecb81` | succeeded + assistant message |
+| `SETUP_TASK` | `turn_db09…ff771` | `run_e575…3851c9` | succeeded + assistant message |
+| `CLARIFY_TASK` | `turn_387a…25da9` | `run_8774…cecb81` | succeeded + assistant message |
 
 首次调试时，第二个 Turn 曾遗漏必填的 `success_criteria`。本地严格校验拒绝了不完整结果，没有进入状态机。强化“完整十字段合同”提示后重新建立测试 Session，以上复验成功。

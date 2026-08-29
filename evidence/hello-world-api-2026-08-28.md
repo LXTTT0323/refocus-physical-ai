@@ -10,12 +10,12 @@
 
 - Base URL：`https://ventured-agent-stack.pingcap.cn`
 - Project：`Default Project`
-- Project ID：`proj_2820e7f7e9fa44f9b45f28c4ebe3c25f`
+- Project ID：`proj_2820…3c25f`
 - Agent：`refocus-agent`
-- Agent ID：`agent_dc6abc6442814ce724ccbf104ce9b5b5`
-- Session ID：`sess_b707f3ad4e2d45739873313ef11631b2`
-- Turn ID：`turn_2c84cb04aec44bc396d1652c6fd046a7`
-- Agent Run ID：`run_54d1ce45d18c48d6a5762d031a71ed19`
+- Agent ID：`agent_dc6a…e9b5b5`
+- Session ID：`sess_b707…631b2`
+- Turn ID：`turn_2c84…d046a7`
+- Agent Run ID：`run_54d1…71ed19`
 
 ## 输入与观察结果
 
@@ -74,4 +74,3 @@ AGENT_STACK_AGENT_ID（可选）
 - 创建正式的 `flow-coordinator` Agent。
 - 编写、发布和安装三个产品 Skill。
 - Windows Bridge 与 ESP32 联调。
-

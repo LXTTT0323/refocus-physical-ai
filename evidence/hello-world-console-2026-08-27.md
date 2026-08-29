@@ -10,9 +10,9 @@
 - Turn 状态：`succeeded`
 - Run 展示：Started → Completed thinking → Assistant message → succeeded
 - Operation：`llm.complete`
-- Operation ID：`op_6b4c14da87bc485eb444e1d8b063ea9f`
-- Turn ID：`turn_5cdc27fef4a64166a2f9293486aaef63`
-- Run ID：`run_ba203b77c4ad4947a434f3a3a1b4d702`
+- Operation ID：`op_6b4c…3ea9f`
+- Turn ID：`turn_5cdc…aef63`
+- Run ID：`run_ba20…4d702`
 - Runtime：`pi-agent-core`
 - 请求模型/模型：`qwen3.7-plus`
 - Provider：`openai`
