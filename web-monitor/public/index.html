@@ -4,23 +4,41 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>RE:FOCUS 智能观察器</title>
+    <title>RE:FOCUS｜保护专注，进入心流</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">RE:FOCUS · LOCAL OBSERVER</p>
-          <h1>让专注被看见，<span>不让隐私离开电脑。</span></h1>
-          <p class="lede">说出目标，开始专注。RE:FOCUS 会在需要时提醒你，并在结束后留下清晰的专注记录。</p>
+          <p class="eyebrow">RE:FOCUS · PHYSICAL AI FOCUS COMPANION</p>
+          <h1>保护专注，<span>提高进入心流的能力。</span></h1>
+          <p class="lede">从一次明确的开始，到一份真实的专注记录。RE:FOCUS 帮你守住重要的工作时段，也逐渐了解哪些任务更容易让你进入专注与心流。</p>
         </div>
       </header>
+
+      <section class="experience-mode" aria-labelledby="experienceModeTitle">
+        <div class="mode-copy">
+          <p class="eyebrow">体验方式</p>
+          <h2 id="experienceModeTitle">这次想怎样开始？</h2>
+          <p id="modeDescription">无需连接设备，授权后直接开始，页面用黄、绿、红三种状态陪你完成专注。</p>
+        </div>
+        <div class="mode-options" aria-label="选择体验方式">
+          <a id="webModeLink" class="mode-option" href="/">
+            <span>无需硬件</span>
+            <strong>纯网页版</strong>
+          </a>
+          <a id="hardwareModeLink" class="mode-option" href="/?hardware=1">
+            <span>连接实体按钮与灯</span>
+            <strong>硬件 Demo 版</strong>
+          </a>
+        </div>
+      </section>
 
       <nav class="session-steps" aria-label="专注流程">
         <div data-step="start" class="active"><span>1</span><b>开始</b><small>说出或输入任务</small></div>
         <i></i>
-        <div data-step="running"><span>2</span><b>专注中</b><small>灯亮并持续监测</small></div>
+        <div data-step="running"><span>2</span><b>专注中</b><small id="runningStepDescription">状态判断并持续监测</small></div>
         <i></i>
         <div data-step="reflection"><span>3</span><b>结束</b><small>选择是否记入</small></div>
       </nav>
@@ -38,7 +56,7 @@
           <button id="hardwareConnectButton" class="secondary">连接 C 板</button>
           <button id="startButton" class="primary start-session-button">准备检测并授权</button>
         </div>
-        <p class="permission-note">先点击一次完成摄像头与屏幕共享授权；页面显示“准备完成”后，按实体按钮才会开始计时和监测。共享时请选择“整个屏幕”。</p>
+        <p id="permissionNote" class="permission-note">点击后完成摄像头与屏幕共享授权，授权成功即开始计时和监测。共享时请选择“整个屏幕”。</p>
         <div id="startProgress" class="start-progress hidden" role="status" aria-live="polite">
           <i></i><span>正在准备…</span>
         </div>
@@ -53,8 +71,14 @@
 
       <section id="runningBar" class="running-bar hidden">
         <div><p class="eyebrow">SESSION RUNNING</p><h2>正在专注：<span id="runningGoal">—</span></h2></div>
-        <div class="running-indicator"><i></i><span>灯已亮 · <b id="runningElapsed">00:00</b></span></div>
+        <div id="runningIndicator" class="running-indicator"><i></i><span><span id="runningStateLabel">黄灯 · 正在建立专注</span> · <b id="runningElapsed">00:00</b></span></div>
         <button id="endButton" class="danger">结束本次专注</button>
+      </section>
+
+      <section id="webStateLegend" class="web-state-legend hidden" aria-label="纯网页版状态说明">
+        <div class="yellow"><i></i><span><b>黄灯</b> 正在准备或需要更多判断依据</span></div>
+        <div class="green"><i></i><span><b>绿灯</b> 人在场、任务相关，专注状态稳定</span></div>
+        <div class="red"><i></i><span><b>红灯</b> 持续离开或偏离任务，需要回神</span></div>
       </section>
 
       <section id="clarificationCard" class="clarification-card hidden">
@@ -69,7 +93,7 @@
       <section id="feedbackCard" class="feedback-card hidden">
         <div class="panel-head">
           <div><p class="eyebrow">SESSION REFLECTION</p><h2>本次专注已经结束</h2></div>
-          <span class="state-badge good">灯已熄灭</span>
+          <span id="reflectionStateBadge" class="state-badge good">本次监测已结束</span>
         </div>
         <div class="reflection-question required-question">
           <div><b>1. 是否将这一次专注计入记录？</b><span>必填</span></div>
@@ -132,7 +156,7 @@
 
       <div id="runtimeView" class="hidden">
       <section class="status-strip" aria-label="连接状态">
-        <div data-status="hardware"><span>C 板硬件</span><b>正在检测</b></div>
+        <div data-status="hardware"><span id="hardwareStatusLabel">运行模式</span><b>纯网页版</b></div>
         <div data-status="camera"><span>摄像头</span><b>未授权</b></div>
         <div data-status="screen"><span>屏幕</span><b>未共享</b></div>
         <div data-status="agent"><span>Flow Agent</span><b>未连接</b></div>

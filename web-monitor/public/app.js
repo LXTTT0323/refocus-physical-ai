@@ -16,16 +16,26 @@ const webSerialMode = new URLSearchParams(location.search).get("webserial") === 
 const physicalHardwareMode = hardwareMode || webSerialMode;
 
 const elements = {
+  webModeLink: $("#webModeLink"),
+  hardwareModeLink: $("#hardwareModeLink"),
+  modeDescription: $("#modeDescription"),
   goal: $("#goal"),
   goalVoiceStatus: $("#goalVoiceStatus"),
   startView: $("#startView"),
   runningBar: $("#runningBar"),
   runningGoal: $("#runningGoal"),
   runningElapsed: $("#runningElapsed"),
+  runningIndicator: $("#runningIndicator"),
+  runningStateLabel: $("#runningStateLabel"),
+  runningStepDescription: $("#runningStepDescription"),
+  webStateLegend: $("#webStateLegend"),
   runtimeView: $("#runtimeView"),
   startProgress: $("#startProgress"),
   start: $("#startButton"),
   hardwareConnect: $("#hardwareConnectButton"),
+  permissionNote: $("#permissionNote"),
+  hardwareStatusLabel: $("#hardwareStatusLabel"),
+  reflectionStateBadge: $("#reflectionStateBadge"),
   end: $("#endButton"),
   taskTest: $("#taskTestButton"),
   cameraTest: $("#cameraTestButton"),
@@ -161,6 +171,7 @@ function setSessionPhase(phase) {
   elements.startView.classList.toggle("hidden", phase !== "start");
   elements.runningBar.classList.toggle("hidden", phase !== "running");
   elements.runtimeView.classList.toggle("hidden", phase !== "running");
+  elements.webStateLegend.classList.toggle("hidden", phase !== "running" || physicalHardwareMode);
   elements.feedbackCard.classList.toggle("hidden", phase !== "reflection");
   elements.summaryCard.classList.toggle("hidden", phase !== "summary");
   for (const step of document.querySelectorAll("[data-step]")) {
@@ -179,6 +190,44 @@ function setSessionPhase(phase) {
         : elements.startView;
   target?.scrollIntoView({ behavior: "smooth", block: "start" });
   if (phase === "summary") renderHistoryDashboard();
+}
+
+function configureExperienceMode() {
+  elements.webModeLink.classList.toggle("active", !physicalHardwareMode);
+  elements.webModeLink.setAttribute("aria-current", physicalHardwareMode ? "false" : "page");
+  elements.hardwareModeLink.classList.toggle("active", physicalHardwareMode);
+  elements.hardwareModeLink.setAttribute("aria-current", physicalHardwareMode ? "page" : "false");
+
+  if (physicalHardwareMode) {
+    elements.modeDescription.textContent = "保留当前硬件 Demo 流程：先完成授权，再由实体按钮开始或结束，LED 显示 Session 是否正在进行。";
+    elements.permissionNote.textContent = "先点击一次完成摄像头与屏幕共享授权；页面显示“准备完成”后，按实体按钮才会开始计时和监测。共享时请选择“整个屏幕”。";
+    elements.runningStepDescription.textContent = "灯亮并持续监测";
+    elements.runningStateLabel.textContent = "灯已亮";
+    elements.reflectionStateBadge.textContent = "灯已熄灭";
+    elements.hardwareStatusLabel.textContent = "C 板硬件";
+  } else {
+    elements.modeDescription.textContent = "无需连接设备，授权后直接开始，页面用黄、绿、红三种状态陪你完成专注。";
+    elements.permissionNote.textContent = "点击后完成摄像头与屏幕共享授权，授权成功即开始计时和监测。共享时请选择“整个屏幕”。";
+    elements.runningStepDescription.textContent = "状态判断并持续监测";
+    elements.runningStateLabel.textContent = "黄灯 · 正在建立专注";
+    elements.reflectionStateBadge.textContent = "本次监测已结束";
+    elements.hardwareStatusLabel.textContent = "运行模式";
+  }
+}
+
+function renderRunningState(light) {
+  if (physicalHardwareMode) {
+    elements.runningIndicator.className = "running-indicator";
+    elements.runningStateLabel.textContent = "灯已亮";
+    return;
+  }
+  const labels = {
+    yellow: "黄灯 · 正在建立专注",
+    green: "绿灯 · 专注状态稳定",
+    red: "红灯 · 检测到持续偏离",
+  };
+  elements.runningIndicator.className = `running-indicator ${light}`;
+  elements.runningStateLabel.textContent = labels[light] ?? labels.yellow;
 }
 
 function setConnection(name, text, kind = "") {
@@ -631,6 +680,7 @@ function updateReadyGate() {
   } else {
     elements.focusDecision.textContent = `SETUP · 准备中（网页状态）｜${decision.reason}`;
   }
+  renderRunningState(decision.light);
   if (decision.light !== state.lastLight) {
     if (decision.light === "red" && state.lastLight === "green") {
       state.interruptionCount += 1;
@@ -1424,10 +1474,11 @@ for (const button of document.querySelectorAll("[data-voice-target]")) {
 loadFaceModel();
 loadVisualProvider();
 pollHardwareEvents();
+configureExperienceMode();
 setSessionPhase("start");
 if (webSerialMode) {
   void initializeHardwareDetection();
 } else {
   elements.hardwareConnect.classList.add("hidden");
-  setConnection("hardware", hardwareMode ? "等待 Mac 桥接" : "未启用", hardwareMode ? "warn" : "");
+  setConnection("hardware", hardwareMode ? "等待 Mac 桥接" : "纯网页版", hardwareMode ? "warn" : "ok");
 }
