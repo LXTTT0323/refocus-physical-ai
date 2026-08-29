@@ -373,17 +373,33 @@ export class AgentStackFlowCoordinator {
     };
   }
 
+  async #request(url, options, stage) {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        return await this.#fetch(url, {
+          ...options,
+          signal: AbortSignal.timeout(this.#timeoutMs),
+        });
+      } catch (error) {
+        const code = error?.cause?.code ?? error?.code;
+        if (code !== "UND_ERR_CONNECT_TIMEOUT" || attempt === 2) throw error;
+        console.warn("[agent-stack-connect-retry]", JSON.stringify({ stage, attempt, code }));
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
+    throw new Error(`Agent Stack request failed before ${stage}`);
+  }
+
   async #createSession() {
     if (this.#sessionId) {
       throw new Error("Coordinator Session already exists for this Bridge instance");
     }
 
-    const response = await this.#fetch(`${this.#baseUrl}/api/sessions`, {
+    const response = await this.#request(`${this.#baseUrl}/api/sessions`, {
       method: "POST",
       headers: this.#headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ agentId: this.#agentId }),
-      signal: AbortSignal.timeout(this.#timeoutMs),
-    });
+    }, "create_session");
 
     if (response.status !== 201) {
       const error = await readError(response);
@@ -400,7 +416,7 @@ export class AgentStackFlowCoordinator {
   async #runJsonTurn(operation, input, expectedJson, userFileIds = []) {
     if (!this.#sessionId) throw new Error("Coordinator Session has not been created");
 
-    const response = await this.#fetch(
+    const response = await this.#request(
       `${this.#baseUrl}/api/sessions/${this.#sessionId}/turns`,
       {
         method: "POST",
@@ -415,8 +431,8 @@ export class AgentStackFlowCoordinator {
             ...(userFileIds.length ? { userFileIds } : {}),
           },
         }),
-        signal: AbortSignal.timeout(this.#timeoutMs),
       },
+      `create_turn:${operation}`,
     );
 
     if (response.status !== 201 || !response.body) {
@@ -526,15 +542,14 @@ export class AgentStackFlowCoordinator {
     const payload = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
     const sha256 = createHash("sha256").update(payload).digest("hex");
     const digestBase64 = createHash("sha256").update(payload).digest("base64");
-    const response = await this.#fetch(`${this.#baseUrl}/api/user-files/uploads`, {
+    const response = await this.#request(`${this.#baseUrl}/api/user-files/uploads`, {
       method: "POST",
       headers: this.#headers({
         "Content-Type": "application/json",
         "Idempotency-Key": `refocus-visual-${randomUUID()}`,
       }),
       body: JSON.stringify({ originalName, byteSize: payload.length, sha256, contentType }),
-      signal: AbortSignal.timeout(this.#timeoutMs),
-    });
+    }, "create_visual_upload");
     if (response.status !== 201) {
       const error = await readError(response);
       throw new Error(`Create visual upload failed: HTTP ${response.status} ${error.code}: ${error.message}`);
@@ -544,7 +559,7 @@ export class AgentStackFlowCoordinator {
       throw new Error("Visual snapshot requires unsupported multipart upload; reduce snapshot size");
     }
     const contentUrl = new URL(plan.contentUrl, this.#baseUrl).toString();
-    const uploadResponse = await this.#fetch(contentUrl, {
+    const uploadResponse = await this.#request(contentUrl, {
       method: "PUT",
       headers: this.#headers({
         "Content-Type": "application/octet-stream",
@@ -552,8 +567,7 @@ export class AgentStackFlowCoordinator {
         "Content-Digest": `sha-256=:${digestBase64}:`,
       }),
       body: payload,
-      signal: AbortSignal.timeout(this.#timeoutMs),
-    });
+    }, "upload_visual_snapshot");
     if (uploadResponse.status !== 200) {
       const error = await readError(uploadResponse);
       throw new Error(`Upload visual snapshot failed: HTTP ${uploadResponse.status} ${error.code}: ${error.message}`);

@@ -524,6 +524,14 @@ export function createMonitorHandler({
 
       json(response, 404, { error: "not found" });
     } catch (error) {
+      console.error("[refocus-api-error]", JSON.stringify({
+        method: request.method,
+        path: url.pathname,
+        name: error?.name ?? "Error",
+        code: error?.cause?.code ?? error?.code ?? null,
+        message: safeMessage(error),
+        cause: error?.cause ? safeMessage(error.cause) : null,
+      }));
       json(response, 500, { error: safeMessage(error) });
     }
   };

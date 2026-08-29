@@ -157,6 +157,43 @@ test("real coordinator adapter creates one Session and parses NDJSON Turns", asy
   assert.doesNotMatch(setupPrompt, /不得调用工具或 Skill，不得使用 Markdown/);
 });
 
+test("coordinator retries one Agent Stack TCP connect timeout", async () => {
+  const timeout = new TypeError("fetch failed", {
+    cause: Object.assign(new Error("Connect Timeout Error"), { code: "UND_ERR_CONNECT_TIMEOUT" }),
+  });
+  const responses = [
+    timeout,
+    new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }),
+    successfulTurn(taskContract(), "retry"),
+  ];
+  const requests = [];
+  const coordinator = new AgentStackFlowCoordinator({
+    baseUrl: "https://example.invalid",
+    apiKey: "test-secret",
+    projectId: "proj_test",
+    agentId: "agent_test",
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      const next = responses.shift();
+      if (next instanceof Error) throw next;
+      return next;
+    },
+  });
+
+  const started = await coordinator.startSession({
+    local_session_id: "local_retry",
+    goal: "完成 PPT 前三页",
+    focus_minutes: 30,
+  });
+
+  assert.equal(started.coordinator_session_id, "sess_test");
+  assert.equal(started.task_contract.status, "ready");
+  assert.equal(requests.length, 3);
+});
+
 test("task setup can request and consume one clarification in the same Session", async () => {
   const responses = [
     new Response(JSON.stringify({ session: { sessionId: "sess_test" } }), {
